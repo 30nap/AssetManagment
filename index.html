@@ -39,6 +39,41 @@
         </article>
       </section>
 
+      <section class="inflation-panel" aria-label="اثر تورم ایران روی دارایی‌ها">
+        <div>
+          <p class="eyebrow">قدرت خرید</p>
+          <h2>دارایی‌ها نسبت به تورم ایران</h2>
+          <p>
+            نرخ تورم سالانه را وارد کنید تا ببینید ارزش واقعی دارایی‌ها در پایان سال، با فرض ثابت ماندن قیمت‌ها،
+            چقدر کاهش پیدا می‌کند.
+          </p>
+        </div>
+        <div class="inflation-controls">
+          <label>
+            نرخ تورم سالانه
+            <div class="percent-input">
+              <input id="inflation-rate" inputmode="decimal" type="number" min="0" step="0.1" />
+              <span>٪</span>
+            </div>
+          </label>
+        </div>
+        <div class="inflation-results">
+          <article>
+            <span>ارزش واقعی بعد از تورم</span>
+            <strong id="inflation-real-value">۰ تومان</strong>
+          </article>
+          <article>
+            <span>کاهش قدرت خرید</span>
+            <strong id="inflation-loss">۰ تومان</strong>
+          </article>
+          <article>
+            <span>رشد لازم برای حفظ ارزش</span>
+            <strong id="inflation-needed-growth">۰٪</strong>
+          </article>
+        </div>
+        <p id="inflation-note" class="inflation-note">برای محاسبه، مقدار دارایی‌ها را وارد کنید.</p>
+      </section>
+
       <section class="controls-panel">
         <div>
           <h2>نرخ‌های پایه</h2>
@@ -63,6 +98,7 @@
               <h2>لیست دارایی‌ها</h2>
               <p>مقدار و قیمت واحد را هر زمان خواستید تغییر دهید؛ داده‌ها روی همین مرورگر ذخیره می‌شوند.</p>
             </div>
+            <button id="open-custom-dialog" class="secondary" type="button">افزودن دارایی دستی</button>
           </div>
           <div class="table-wrap">
             <table>
@@ -74,6 +110,7 @@
                   <th>ارزش تومان</th>
                   <th>ارزش دلار</th>
                   <th>ارزش یورو</th>
+                  <th>عملیات</th>
                 </tr>
               </thead>
               <tbody id="assets-body"></tbody>
@@ -94,14 +131,53 @@
         </aside>
       </section>
 
-      <section class="notes-panel">
-        <h2>منابع قیمت</h2>
-        <p>
-          بروزرسانی آنلاین از صفحه‌های پروفایل TGJU انجام می‌شود. قیمت‌های ریالی TGJU به تومان تبدیل می‌شوند و
-          بیتکوین، اتریوم و تتر با قیمت دلاری TGJU و نرخ دلار TGJU محاسبه می‌شوند.
-        </p>
-      </section>
+      <footer class="site-footer">
+        <p>© ۲۰۲۶ همه حقوق محفوظ است. طراحی و برنامه‌نویسی توسط سینا پزشکی</p>
+      </footer>
     </main>
+
+    <dialog id="custom-asset-dialog" class="custom-dialog" aria-labelledby="custom-dialog-title">
+      <form id="custom-asset-form" class="custom-dialog-card">
+        <div class="dialog-heading">
+          <div>
+            <p class="eyebrow">دارایی جدید</p>
+            <h2 id="custom-dialog-title">افزودن دارایی دستی</h2>
+            <p>برای صندوق سهامی، سهام، سپرده یا هر دارایی دیگری که منبع آنلاین ندارد.</p>
+          </div>
+          <button id="close-custom-dialog" class="icon-button" type="button" aria-label="بستن">×</button>
+        </div>
+        <div class="custom-grid">
+          <label>
+            نام دارایی
+            <input id="custom-title" type="text" placeholder="مثلا صندوق سهامی کاریزما" />
+          </label>
+          <label>
+            واحد
+            <input id="custom-unit" type="text" placeholder="واحد، سهم، عدد..." />
+          </label>
+          <label>
+            مقدار
+            <input id="custom-amount" inputmode="decimal" type="number" min="0" step="any" />
+          </label>
+          <label>
+            قیمت واحد
+            <input id="custom-price" inputmode="decimal" type="number" min="0" step="any" />
+          </label>
+          <label>
+            واحد قیمت
+            <select id="custom-currency">
+              <option value="IRR">تومان</option>
+              <option value="USD">دلار</option>
+              <option value="EUR">یورو</option>
+            </select>
+          </label>
+        </div>
+        <div class="dialog-actions">
+          <button id="add-custom-asset" type="submit">اضافه کردن</button>
+          <button class="secondary" type="button" data-dialog-close>انصراف</button>
+        </div>
+      </form>
+    </dialog>
 
     <template id="asset-row-template">
       <tr>
@@ -130,6 +206,9 @@
         <td class="value-irr"></td>
         <td class="value-usd"></td>
         <td class="value-eur"></td>
+        <td class="row-action-cell">
+          <button class="delete-asset" type="button">حذف</button>
+        </td>
       </tr>
     </template>
 

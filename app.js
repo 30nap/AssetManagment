@@ -33,6 +33,7 @@ const defaultState = {
   eurToIrr: 66500,
   lastUpdated: null,
   priceStatus: "قیمت‌های اولیه قابل ویرایش هستند.",
+  inflationRate: 45,
   assets: [
     { id: "gold18", title: "طلا ۱۸ عیار", unit: "گرم", amount: 0, price: 4575000, currency: "IRR", icon: "۱۸" },
     { id: "gold24", title: "طلا ۲۴ عیار", unit: "گرم", amount: 0, price: 6100000, currency: "IRR", icon: "۲۴" },
@@ -60,11 +61,26 @@ const elements = {
   totalIrr: document.querySelector("#total-irr"),
   totalUsd: document.querySelector("#total-usd"),
   totalEur: document.querySelector("#total-eur"),
+  inflationRate: document.querySelector("#inflation-rate"),
+  inflationRealValue: document.querySelector("#inflation-real-value"),
+  inflationLoss: document.querySelector("#inflation-loss"),
+  inflationNeededGrowth: document.querySelector("#inflation-needed-growth"),
+  inflationNote: document.querySelector("#inflation-note"),
   lastUpdated: document.querySelector("#last-updated"),
   priceStatus: document.querySelector("#price-status"),
   donut: document.querySelector("#donut"),
   donutTotal: document.querySelector("#donut-total"),
   allocationList: document.querySelector("#allocation-list"),
+  customTitle: document.querySelector("#custom-title"),
+  customUnit: document.querySelector("#custom-unit"),
+  customAmount: document.querySelector("#custom-amount"),
+  customPrice: document.querySelector("#custom-price"),
+  customCurrency: document.querySelector("#custom-currency"),
+  addCustomAsset: document.querySelector("#add-custom-asset"),
+  customDialog: document.querySelector("#custom-asset-dialog"),
+  customAssetForm: document.querySelector("#custom-asset-form"),
+  openCustomDialog: document.querySelector("#open-custom-dialog"),
+  closeCustomDialog: document.querySelector("#close-custom-dialog"),
 };
 
 function loadState() {
@@ -76,10 +92,22 @@ function loadState() {
   try {
     const parsed = JSON.parse(saved);
     const assetMap = new Map((parsed.assets || []).map((asset) => [asset.id, asset]));
+    const defaultAssetIds = new Set(defaultState.assets.map((asset) => asset.id));
+    const customAssets = (parsed.assets || [])
+      .filter((asset) => !defaultAssetIds.has(asset.id))
+      .map((asset) => ({
+        ...asset,
+        icon: asset.icon || asset.title?.slice(0, 2) || "+",
+        custom: true,
+      }));
+
     return {
       ...defaultState,
       ...parsed,
-      assets: defaultState.assets.map((asset) => ({ ...asset, ...(assetMap.get(asset.id) || {}) })),
+      assets: [
+        ...defaultState.assets.map((asset) => ({ ...asset, ...(assetMap.get(asset.id) || {}) })),
+        ...customAssets,
+      ],
     };
   } catch {
     return structuredClone(defaultState);
@@ -148,6 +176,10 @@ function renderRows() {
     priceInput.addEventListener("input", () => updateAsset(asset.id, { price: toNumber(priceInput.value) }));
     priceCurrency.addEventListener("change", () => updateAsset(asset.id, { currency: priceCurrency.value }));
 
+    const deleteButton = row.querySelector(".delete-asset");
+    deleteButton.hidden = !asset.custom;
+    deleteButton.addEventListener("click", () => deleteAsset(asset.id));
+
     elements.assetsBody.append(row);
   });
 }
@@ -156,6 +188,74 @@ function updateAsset(id, patch) {
   state.assets = state.assets.map((asset) => (asset.id === id ? { ...asset, ...patch } : asset));
   saveState();
   renderTotals();
+}
+
+function deleteAsset(id) {
+  const asset = state.assets.find((item) => item.id === id);
+  if (!asset?.custom) return;
+  if (!confirm(`دارایی «${asset.title}» حذف شود؟`)) return;
+
+  state.assets = state.assets.filter((item) => item.id !== id);
+  saveState();
+  renderRows();
+  renderTotals();
+}
+
+function addCustomAsset() {
+  const title = elements.customTitle.value.trim();
+  const unit = elements.customUnit.value.trim() || "واحد";
+  const amount = toNumber(elements.customAmount.value);
+  const price = toNumber(elements.customPrice.value);
+  const currency = elements.customCurrency.value;
+
+  if (!title) {
+    elements.customTitle.focus();
+    return false;
+  }
+
+  state.assets.push({
+    id: `custom-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    title,
+    unit,
+    amount,
+    price,
+    currency,
+    icon: title.slice(0, 2),
+    custom: true,
+  });
+
+  resetCustomAssetForm();
+
+  saveState();
+  renderRows();
+  renderTotals();
+  closeCustomAssetDialog();
+  return true;
+}
+
+function resetCustomAssetForm() {
+  elements.customTitle.value = "";
+  elements.customUnit.value = "";
+  elements.customAmount.value = "";
+  elements.customPrice.value = "";
+  elements.customCurrency.value = "IRR";
+}
+
+function openCustomAssetDialog() {
+  if (typeof elements.customDialog.showModal === "function") {
+    elements.customDialog.showModal();
+  } else {
+    elements.customDialog.setAttribute("open", "");
+  }
+  elements.customTitle.focus();
+}
+
+function closeCustomAssetDialog() {
+  if (elements.customDialog.open) {
+    elements.customDialog.close();
+  } else {
+    elements.customDialog.removeAttribute("open");
+  }
 }
 
 function getAssetValue(asset) {
@@ -200,8 +300,30 @@ function renderTotals() {
     : "هنوز بروزرسانی نشده";
   elements.priceStatus.textContent = state.priceStatus;
 
+  renderInflation(totalIrr);
   renderAllocation(allocations, totalIrr);
   saveState();
+}
+
+function renderInflation(totalIrr) {
+  state.inflationRate = toNumber(elements.inflationRate.value);
+  const rate = Math.max(state.inflationRate, 0) / 100;
+  const realValue = rate > 0 ? totalIrr / (1 + rate) : totalIrr;
+  const purchasingPowerLoss = Math.max(totalIrr - realValue, 0);
+
+  elements.inflationRealValue.textContent = formatMoney(realValue, "IRR");
+  elements.inflationLoss.textContent = formatMoney(purchasingPowerLoss, "IRR");
+  elements.inflationNeededGrowth.textContent = `${formatNumber(state.inflationRate, 1)}٪`;
+
+  if (totalIrr <= 0) {
+    elements.inflationNote.textContent = "برای محاسبه، مقدار دارایی‌ها را وارد کنید.";
+    return;
+  }
+
+  elements.inflationNote.textContent = `برای حفظ قدرت خرید، دارایی‌های شما باید در یک سال حداقل ${formatNumber(
+    state.inflationRate,
+    1,
+  )}٪ رشد کنند.`;
 }
 
 function renderAllocation(allocations, totalIrr) {
@@ -415,15 +537,32 @@ function detectTgjuCurrency(rawCurrency, text) {
 function bindEvents() {
   elements.usdToIrr.value = state.usdToIrr;
   elements.eurToIrr.value = state.eurToIrr;
+  elements.inflationRate.value = state.inflationRate;
   elements.usdToIrr.addEventListener("input", renderTotals);
   elements.eurToIrr.addEventListener("input", renderTotals);
+  elements.inflationRate.addEventListener("input", renderTotals);
   elements.refreshPrices.addEventListener("click", refreshPrices);
+  elements.openCustomDialog.addEventListener("click", openCustomAssetDialog);
+  elements.closeCustomDialog.addEventListener("click", closeCustomAssetDialog);
+  elements.customAssetForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    addCustomAsset();
+  });
+  elements.customDialog.addEventListener("click", (event) => {
+    if (event.target === elements.customDialog) {
+      closeCustomAssetDialog();
+    }
+  });
+  elements.customDialog.querySelectorAll("[data-dialog-close]").forEach((button) => {
+    button.addEventListener("click", closeCustomAssetDialog);
+  });
   elements.resetData.addEventListener("click", () => {
     if (!confirm("همه مقدارها و نرخ‌های ذخیره‌شده پاک شوند؟")) return;
     state = structuredClone(defaultState);
     saveState();
     elements.usdToIrr.value = state.usdToIrr;
     elements.eurToIrr.value = state.eurToIrr;
+    elements.inflationRate.value = state.inflationRate;
     renderRows();
     renderTotals();
   });
