@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>داشبورد دارایی‌ها</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="hero">
+        <div>
+          <p class="eyebrow">مدیریت دارایی شخصی</p>
+          <h1>ارزش لحظه‌ای دارایی‌ها</h1>
+          <p class="hero-copy">
+            مقدار دارایی‌ها را وارد کنید؛ سایت ارزش هر مورد و مجموع کل را به دلار، یورو و تومان محاسبه می‌کند.
+          </p>
+        </div>
+        <div class="hero-actions">
+          <button id="refresh-prices" type="button">بروزرسانی آنلاین قیمت‌ها</button>
+          <button id="reset-data" class="secondary" type="button">بازنشانی داده‌ها</button>
+        </div>
+      </section>
+
+      <section class="summary-grid" aria-label="خلاصه ارزش دارایی‌ها">
+        <article class="summary-card total-card">
+          <span>ارزش کل به تومان</span>
+          <strong id="total-irr">۰ تومان</strong>
+          <small id="last-updated">هنوز بروزرسانی نشده</small>
+          <small id="price-status">قیمت‌های اولیه قابل ویرایش هستند.</small>
+        </article>
+        <article class="summary-card">
+          <span>ارزش کل به دلار</span>
+          <strong id="total-usd">$0</strong>
+        </article>
+        <article class="summary-card">
+          <span>ارزش کل به یورو</span>
+          <strong id="total-eur">€0</strong>
+        </article>
+      </section>
+
+      <section class="controls-panel">
+        <div>
+          <h2>نرخ‌های پایه</h2>
+          <p>اگر منبع آنلاین در دسترس نبود، این نرخ‌ها برای تبدیل و محاسبه استفاده می‌شوند.</p>
+        </div>
+        <div class="rates-grid">
+          <label>
+            دلار آزاد به تومان
+            <input id="usd-to-irr" inputmode="decimal" type="number" min="0" step="100" />
+          </label>
+          <label>
+            یورو آزاد به تومان
+            <input id="eur-to-irr" inputmode="decimal" type="number" min="0" step="100" />
+          </label>
+        </div>
+      </section>
+
+      <section class="content-grid">
+        <section class="assets-panel">
+          <div class="section-heading">
+            <div>
+              <h2>لیست دارایی‌ها</h2>
+              <p>مقدار و قیمت واحد را هر زمان خواستید تغییر دهید؛ داده‌ها روی همین مرورگر ذخیره می‌شوند.</p>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>دارایی</th>
+                  <th>مقدار</th>
+                  <th>قیمت واحد</th>
+                  <th>ارزش تومان</th>
+                  <th>ارزش دلار</th>
+                  <th>ارزش یورو</th>
+                </tr>
+              </thead>
+              <tbody id="assets-body"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <aside class="insights-panel">
+          <h2>ترکیب دارایی</h2>
+          <div class="donut-wrap">
+            <div id="donut" class="donut" aria-hidden="true"></div>
+            <div class="donut-center">
+              <span>کل</span>
+              <strong id="donut-total">۰</strong>
+            </div>
+          </div>
+          <div id="allocation-list" class="allocation-list"></div>
+        </aside>
+      </section>
+
+      <section class="notes-panel">
+        <h2>منابع قیمت</h2>
+        <p>
+          بروزرسانی آنلاین از صفحه‌های پروفایل TGJU انجام می‌شود. قیمت‌های ریالی TGJU به تومان تبدیل می‌شوند و
+          بیتکوین، اتریوم و تتر با قیمت دلاری TGJU و نرخ دلار TGJU محاسبه می‌شوند.
+        </p>
+      </section>
+    </main>
+
+    <template id="asset-row-template">
+      <tr>
+        <td>
+          <div class="asset-name">
+            <span class="asset-icon"></span>
+            <div>
+              <strong class="asset-title"></strong>
+              <small class="asset-unit"></small>
+            </div>
+          </div>
+        </td>
+        <td>
+          <input class="amount-input" inputmode="decimal" type="number" min="0" step="any" />
+        </td>
+        <td>
+          <div class="price-input-group">
+            <input class="price-input" inputmode="decimal" type="number" min="0" step="any" />
+            <select class="price-currency" aria-label="واحد قیمت">
+              <option value="IRR">تومان</option>
+              <option value="USD">دلار</option>
+              <option value="EUR">یورو</option>
+            </select>
+          </div>
+        </td>
+        <td class="value-irr"></td>
+        <td class="value-usd"></td>
+        <td class="value-eur"></td>
+      </tr>
+    </template>
+
+    <script src="app.js"></script>
+  </body>
+</html>
