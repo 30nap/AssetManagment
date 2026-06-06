@@ -4,7 +4,7 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 
 const HOST = process.env.HOST || "0.0.0.0";
-const PORT = Number(process.env.PORT || 8086);
+const PORT = Number(process.env.PORT || 3000);
 const ROOT = __dirname;
 const TGJU_BASE_URL = "https://www.tgju.org/profile/";
 const CACHE_TTL = 60 * 1000;
