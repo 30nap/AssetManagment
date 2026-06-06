@@ -3,7 +3,7 @@ const https = require("node:https");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 
-const HOST = "127.0.0.1";
+const HOST = process.env.HOST || "0.0.0.0";
 const PORT = Number(process.env.PORT || 3000);
 const ROOT = __dirname;
 const TGJU_BASE_URL = "https://www.tgju.org/profile/";
@@ -52,6 +52,17 @@ const server = http.createServer(async (request, response) => {
       cause: error.cause?.message || error.code || null,
     });
   }
+});
+
+server.on("error", (error) => {
+  if (error.code === "EADDRINUSE") {
+    console.error(
+      `Port ${PORT} is already in use on ${HOST}. Stop the existing process or run with another port, for example: PORT=3001 npm start`,
+    );
+    process.exit(1);
+  }
+
+  throw error;
 });
 
 server.listen(PORT, HOST, () => {
