@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "asset-dashboard",
+      "runtimeExecutable": "py",
+      "runtimeArgs": ["flask_app.py"],
+      "port": 5000
+    }
+  ]
+}

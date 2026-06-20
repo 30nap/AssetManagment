@@ -1,0 +1,674 @@
+const STORAGE_KEY = "asset-dashboard-v1";
+const MAX_HISTORY = 180;
+
+const colors = [
+  "#f1b84b", "#f6d27e", "#7cb7ff", "#64d6a3", "#a78bfa",
+  "#ff9f68", "#ff7d7d", "#4dd4d4", "#c9f27a", "#d7b3ff", "#e8e1d3",
+];
+
+// Live conversion rates are fetched from these refs on every refresh.
+const RATE_REFS = {
+  usdToIrr: { provider: "tgju", code: "price_dollar_rl" },
+  eurToIrr: { provider: "tgju", code: "price_eur" },
+};
+
+const defaultState = {
+  usdToIrr: 61000,
+  eurToIrr: 66500,
+  lastUpdated: null,
+  priceStatus: "قیمت‌های اولیه قابل ویرایش هستند.",
+  assets: [
+    { id: "gold18", title: "طلا ۱۸ عیار", unit: "گرم", amount: 0, price: 4575000, currency: "IRR", icon: "۱۸", ref: { provider: "tgju", code: "geram18" } },
+    { id: "gold24", title: "طلا ۲۴ عیار", unit: "گرم", amount: 0, price: 6100000, currency: "IRR", icon: "۲۴", ref: { provider: "tgju", code: "geram24" } },
+    { id: "usd", title: "دلار", unit: "دلار", amount: 0, price: 1, currency: "USD", icon: "$" },
+    { id: "usdt", title: "تتر", unit: "USDT", amount: 0, price: 1, currency: "USD", icon: "₮", ref: { provider: "tgju", code: "crypto-tether" } },
+    { id: "eur", title: "یورو", unit: "یورو", amount: 0, price: 1, currency: "EUR", icon: "€" },
+    { id: "btc", title: "بیتکوین", unit: "BTC", amount: 0, price: 69000, currency: "USD", icon: "₿", ref: { provider: "tgju", code: "crypto-bitcoin" } },
+    { id: "eth", title: "اتریوم", unit: "ETH", amount: 0, price: 3700, currency: "USD", icon: "Ξ", ref: { provider: "tgju", code: "crypto-ethereum" } },
+    { id: "fullcoin", title: "سکه تمام", unit: "عدد", amount: 0, price: 41500000, currency: "IRR", icon: "س", ref: { provider: "tgju", code: "sekee" } },
+    { id: "halfcoin", title: "نیم سکه", unit: "عدد", amount: 0, price: 23500000, currency: "IRR", icon: "ن", ref: { provider: "tgju", code: "nim" } },
+    { id: "quartercoin", title: "ربع سکه", unit: "عدد", amount: 0, price: 15000000, currency: "IRR", icon: "ر", ref: { provider: "tgju", code: "rob" } },
+    { id: "irr", title: "تومان", unit: "تومان", amount: 0, price: 1, currency: "IRR", icon: "ت" },
+  ],
+  history: [],
+};
+
+const DEFAULT_REFS = new Map(defaultState.assets.map((a) => [a.id, a.ref]));
+
+let state = loadState();
+let chartCurrency = "IRR";
+let searchTimer = null;
+let searchToken = 0;
+
+const elements = {
+  assetsBody: document.querySelector("#assets-body"),
+  rowTemplate: document.querySelector("#asset-row-template"),
+  usdToIrr: document.querySelector("#usd-to-irr"),
+  eurToIrr: document.querySelector("#eur-to-irr"),
+  refreshPrices: document.querySelector("#refresh-prices"),
+  refreshLabel: document.querySelector("#refresh-prices .btn-label"),
+  resetData: document.querySelector("#reset-data"),
+  totalIrr: document.querySelector("#total-irr"),
+  totalUsd: document.querySelector("#total-usd"),
+  totalEur: document.querySelector("#total-eur"),
+  lastUpdated: document.querySelector("#last-updated"),
+  priceStatus: document.querySelector("#price-status"),
+  donut: document.querySelector("#donut"),
+  donutTotal: document.querySelector("#donut-total"),
+  allocationList: document.querySelector("#allocation-list"),
+  chart: document.querySelector("#chart"),
+  chartToggle: document.querySelector(".chart-toggle"),
+  customTitle: document.querySelector("#custom-title"),
+  customUnit: document.querySelector("#custom-unit"),
+  customAmount: document.querySelector("#custom-amount"),
+  customPrice: document.querySelector("#custom-price"),
+  customCurrency: document.querySelector("#custom-currency"),
+  customDialog: document.querySelector("#custom-asset-dialog"),
+  customAssetForm: document.querySelector("#custom-asset-form"),
+  openCustomDialog: document.querySelector("#open-custom-dialog"),
+  closeCustomDialog: document.querySelector("#close-custom-dialog"),
+  marketDialog: document.querySelector("#market-dialog"),
+  openMarketDialog: document.querySelector("#open-market-dialog"),
+  closeMarketDialog: document.querySelector("#close-market-dialog"),
+  marketSearch: document.querySelector("#market-search"),
+  marketResults: document.querySelector("#market-results"),
+  toastRegion: document.querySelector("#toast-region"),
+};
+
+function loadState() {
+  const saved = localStorage.getItem(STORAGE_KEY);
+  if (!saved) return structuredClone(defaultState);
+
+  try {
+    const parsed = JSON.parse(saved);
+    const savedMap = new Map((parsed.assets || []).map((asset) => [asset.id, asset]));
+    const defaultIds = new Set(defaultState.assets.map((asset) => asset.id));
+    const customAssets = (parsed.assets || [])
+      .filter((asset) => !defaultIds.has(asset.id))
+      .map((asset) => ({
+        ...asset,
+        icon: asset.icon || asset.title?.slice(0, 2) || "+",
+        custom: true,
+      }));
+
+    return {
+      ...defaultState,
+      ...parsed,
+      // Always re-attach default refs so backend changes propagate.
+      assets: [
+        ...defaultState.assets.map((asset) => ({
+          ...asset,
+          ...(savedMap.get(asset.id) || {}),
+          ref: DEFAULT_REFS.get(asset.id),
+        })),
+        ...customAssets,
+      ],
+      history: Array.isArray(parsed.history) ? parsed.history : [],
+    };
+  } catch {
+    return structuredClone(defaultState);
+  }
+}
+
+function saveState() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+function toNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : 0;
+}
+
+function convertToIrr(price, currency) {
+  if (currency === "USD") return price * state.usdToIrr;
+  if (currency === "EUR") return price * state.eurToIrr;
+  return price;
+}
+
+function formatNumber(value, maximumFractionDigits = 0) {
+  return new Intl.NumberFormat("fa-IR", { maximumFractionDigits }).format(value || 0);
+}
+
+function formatMoney(value, currency) {
+  if (currency === "USD" || currency === "EUR") {
+    return new Intl.NumberFormat("fa-IR", {
+      style: "currency",
+      currency,
+      maximumFractionDigits: value >= 1000 ? 0 : 2,
+    }).format(value || 0);
+  }
+  return `${formatNumber(value)} تومان`;
+}
+
+function showToast(message, type = "info") {
+  const toast = document.createElement("div");
+  toast.className = `toast toast-${type}`;
+  toast.textContent = message;
+  elements.toastRegion.append(toast);
+  requestAnimationFrame(() => toast.classList.add("is-visible"));
+  setTimeout(() => {
+    toast.classList.remove("is-visible");
+    toast.addEventListener("transitionend", () => toast.remove(), { once: true });
+  }, 3600);
+}
+
+/* ---------- Asset table ---------- */
+
+function renderRows() {
+  elements.assetsBody.innerHTML = "";
+
+  state.assets.forEach((asset, index) => {
+    const row = elements.rowTemplate.content.firstElementChild.cloneNode(true);
+    row.dataset.assetId = asset.id;
+    const icon = row.querySelector(".asset-icon");
+    icon.textContent = asset.icon;
+    icon.style.color = colors[index % colors.length];
+    row.querySelector(".asset-title").textContent = asset.title;
+    row.querySelector(".asset-unit").textContent = asset.unit;
+
+    const amountInput = row.querySelector(".amount-input");
+    const priceInput = row.querySelector(".price-input");
+    const priceCurrency = row.querySelector(".price-currency");
+
+    amountInput.value = asset.amount;
+    priceInput.value = asset.price;
+    priceCurrency.value = asset.currency;
+
+    amountInput.addEventListener("input", () => updateAsset(asset.id, { amount: toNumber(amountInput.value) }));
+    priceInput.addEventListener("input", () => updateAsset(asset.id, { price: toNumber(priceInput.value) }));
+    priceCurrency.addEventListener("change", () => updateAsset(asset.id, { currency: priceCurrency.value }));
+
+    const deleteButton = row.querySelector(".delete-asset");
+    deleteButton.hidden = !asset.custom;
+    deleteButton.addEventListener("click", () => deleteAsset(asset.id));
+
+    elements.assetsBody.append(row);
+  });
+}
+
+function updateAsset(id, patch) {
+  state.assets = state.assets.map((asset) => (asset.id === id ? { ...asset, ...patch } : asset));
+  saveState();
+  renderTotals();
+}
+
+function deleteAsset(id) {
+  const asset = state.assets.find((item) => item.id === id);
+  if (!asset?.custom) return;
+  if (!confirm(`دارایی «${asset.title}» حذف شود؟`)) return;
+
+  state.assets = state.assets.filter((item) => item.id !== id);
+  saveState();
+  renderRows();
+  renderTotals();
+  showToast(`دارایی «${asset.title}» حذف شد.`, "info");
+}
+
+/* ---------- Manual custom asset ---------- */
+
+function addCustomAsset() {
+  const title = elements.customTitle.value.trim();
+  const unit = elements.customUnit.value.trim() || "واحد";
+  const amount = toNumber(elements.customAmount.value);
+  const price = toNumber(elements.customPrice.value);
+  const currency = elements.customCurrency.value;
+
+  if (!title) {
+    elements.customTitle.focus();
+    return;
+  }
+
+  state.assets.push({
+    id: `custom-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    title, unit, amount, price, currency,
+    icon: title.slice(0, 2),
+    custom: true,
+  });
+
+  resetCustomAssetForm();
+  saveState();
+  renderRows();
+  renderTotals();
+  closeDialog(elements.customDialog);
+  showToast(`دارایی «${title}» اضافه شد.`, "success");
+}
+
+function resetCustomAssetForm() {
+  elements.customTitle.value = "";
+  elements.customUnit.value = "";
+  elements.customAmount.value = "";
+  elements.customPrice.value = "";
+  elements.customCurrency.value = "IRR";
+}
+
+/* ---------- Add from market (live search) ---------- */
+
+function onMarketSearchInput() {
+  const query = elements.marketSearch.value.trim();
+  clearTimeout(searchTimer);
+
+  if (query.length < 2) {
+    elements.marketResults.innerHTML = '<p class="market-hint">حداقل دو حرف وارد کنید.</p>';
+    return;
+  }
+
+  elements.marketResults.innerHTML = '<p class="market-hint">در حال جستجو...</p>';
+  searchTimer = setTimeout(() => runMarketSearch(query), 300);
+}
+
+async function runMarketSearch(query) {
+  const token = ++searchToken;
+  try {
+    const response = await fetch(`/api/search?q=${encodeURIComponent(query)}`, { cache: "no-store" });
+    if (!response.ok) throw new Error(`search failed: ${response.status}`);
+    const data = await response.json();
+    if (token !== searchToken) return; // a newer search superseded this one
+    renderMarketResults(data.results || []);
+  } catch {
+    if (token !== searchToken) return;
+    elements.marketResults.innerHTML = '<p class="market-hint">جستجو ناموفق بود؛ دوباره تلاش کنید.</p>';
+  }
+}
+
+function renderMarketResults(results) {
+  if (!results.length) {
+    elements.marketResults.innerHTML = '<p class="market-hint">نتیجه‌ای پیدا نشد.</p>';
+    return;
+  }
+
+  elements.marketResults.innerHTML = "";
+  results.forEach((item) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "market-result";
+    const symbol = item.symbol || item.name;
+    const subtitle = item.name && item.name !== symbol ? `<small>${escapeHtml(item.name)}</small>` : "";
+    button.innerHTML = `
+      <span class="market-result-main">
+        <strong>${escapeHtml(symbol)}</strong>
+        ${subtitle}
+      </span>
+      <span class="market-tag">${escapeHtml(item.market || "")}</span>
+    `;
+    button.addEventListener("click", () => addMarketAsset(item, button));
+    elements.marketResults.append(button);
+  });
+}
+
+async function addMarketAsset(item, button) {
+  const id = `mkt-${item.provider}-${item.code}`;
+  if (state.assets.some((asset) => asset.id === id)) {
+    showToast("این دارایی قبلا اضافه شده است.", "info");
+    return;
+  }
+
+  button.disabled = true;
+  const asset = {
+    id,
+    title: item.symbol || item.name,
+    unit: item.unit || "واحد",
+    amount: 0,
+    price: 0,
+    currency: item.currency || "IRR",
+    icon: (item.symbol || item.name || "+").slice(0, 2),
+    custom: true,
+    ref: { provider: item.provider, code: item.code },
+  };
+
+  // Pull a live price immediately so the row isn't empty.
+  try {
+    const quote = await fetchQuotes([{ id, provider: item.provider, code: item.code }]);
+    const price = quote.results?.[id];
+    if (price?.value) {
+      asset.price = price.value;
+      asset.currency = price.currency;
+    }
+  } catch {
+    /* keep price 0; user can refresh later */
+  }
+
+  state.assets.push(asset);
+  saveState();
+  renderRows();
+  renderTotals();
+  closeDialog(elements.marketDialog);
+  showToast(`«${asset.title}» با قیمت زنده اضافه شد.`, "success");
+}
+
+/* ---------- Totals, allocation ---------- */
+
+function getAssetValue(asset) {
+  const valueIrr = asset.amount * convertToIrr(asset.price, asset.currency);
+  return {
+    irr: valueIrr,
+    usd: state.usdToIrr ? valueIrr / state.usdToIrr : 0,
+    eur: state.eurToIrr ? valueIrr / state.eurToIrr : 0,
+  };
+}
+
+function renderTotals() {
+  state.usdToIrr = toNumber(elements.usdToIrr.value);
+  state.eurToIrr = toNumber(elements.eurToIrr.value);
+
+  let totalIrr = 0;
+  let totalUsd = 0;
+  let totalEur = 0;
+  const allocations = [];
+
+  state.assets.forEach((asset, index) => {
+    const values = getAssetValue(asset);
+    totalIrr += values.irr;
+    totalUsd += values.usd;
+    totalEur += values.eur;
+    allocations.push({ ...asset, color: colors[index % colors.length], value: values.irr });
+
+    const row = elements.assetsBody.querySelector(`[data-asset-id="${asset.id}"]`);
+    if (row) {
+      row.querySelector(".value-irr").textContent = formatMoney(values.irr, "IRR");
+      row.querySelector(".value-usd").textContent = formatMoney(values.usd, "USD");
+      row.querySelector(".value-eur").textContent = formatMoney(values.eur, "EUR");
+    }
+  });
+
+  elements.totalIrr.textContent = formatMoney(totalIrr, "IRR");
+  elements.totalUsd.textContent = formatMoney(totalUsd, "USD");
+  elements.totalEur.textContent = formatMoney(totalEur, "EUR");
+  elements.donutTotal.textContent = formatNumber(totalIrr);
+  elements.lastUpdated.textContent = state.lastUpdated
+    ? `آخرین بروزرسانی: ${new Date(state.lastUpdated).toLocaleString("fa-IR")}`
+    : "هنوز بروزرسانی نشده";
+  elements.priceStatus.textContent = state.priceStatus;
+
+  recordHistory(totalIrr, totalUsd, totalEur);
+  renderAllocation(allocations, totalIrr);
+  renderChart();
+  saveState();
+}
+
+function renderAllocation(allocations, totalIrr) {
+  const active = allocations.filter((item) => item.value > 0);
+
+  if (!active.length || totalIrr <= 0) {
+    elements.donut.style.background = "conic-gradient(rgba(255, 255, 255, 0.13) 0 100%)";
+    elements.allocationList.innerHTML = '<p class="hero-copy">برای دیدن ترکیب دارایی، مقدارها را وارد کنید.</p>';
+    return;
+  }
+
+  let cursor = 0;
+  const gradients = active.map((item) => {
+    const start = cursor;
+    cursor += (item.value / totalIrr) * 100;
+    return `${item.color} ${start}% ${cursor}%`;
+  });
+
+  elements.donut.style.background = `conic-gradient(${gradients.join(", ")})`;
+  elements.allocationList.innerHTML = active
+    .sort((a, b) => b.value - a.value)
+    .map((item) => {
+      const percent = (item.value / totalIrr) * 100;
+      return `
+        <div class="allocation-item">
+          <span class="dot" style="background:${item.color}"></span>
+          <span>${escapeHtml(item.title)}</span>
+          <strong>${formatNumber(percent, 1)}٪</strong>
+        </div>`;
+    })
+    .join("");
+}
+
+/* ---------- History + chart ---------- */
+
+function recordHistory(totalIrr, totalUsd, totalEur) {
+  if (totalIrr <= 0) return;
+  const day = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  const entry = { t: day, irr: totalIrr, usd: totalUsd, eur: totalEur };
+  const last = state.history[state.history.length - 1];
+
+  if (last && last.t === day) {
+    state.history[state.history.length - 1] = entry; // upsert today's snapshot
+  } else {
+    state.history.push(entry);
+    if (state.history.length > MAX_HISTORY) state.history.shift();
+  }
+}
+
+const CURRENCY_KEY = { IRR: "irr", USD: "usd", EUR: "eur" };
+
+function renderChart() {
+  const key = CURRENCY_KEY[chartCurrency];
+  const points = state.history.map((h) => ({ t: h.t, v: h[key] || 0 }));
+
+  if (!points.length) {
+    elements.chart.innerHTML = '<p class="chart-empty">پس از وارد کردن دارایی‌ها، روند ارزش کل اینجا نمایش داده می‌شود.</p>';
+    return;
+  }
+  if (points.length === 1) {
+    elements.chart.innerHTML = `
+      <p class="chart-empty">
+        امروز اولین نقطه ثبت شد: <strong>${formatMoney(points[0].v, chartCurrency)}</strong><br />
+        برای دیدن نمودار رشد، در روزهای آینده هم به داشبورد سر بزنید.
+      </p>`;
+    return;
+  }
+
+  const W = 800;
+  const H = 260;
+  const pad = { top: 24, right: 16, bottom: 34, left: 16 };
+  const innerW = W - pad.left - pad.right;
+  const innerH = H - pad.top - pad.bottom;
+
+  const values = points.map((p) => p.v);
+  let min = Math.min(...values);
+  let max = Math.max(...values);
+  if (min === max) { min -= min * 0.05 || 1; max += max * 0.05 || 1; }
+
+  const x = (i) => pad.left + (points.length === 1 ? innerW / 2 : (i / (points.length - 1)) * innerW);
+  const y = (v) => pad.top + innerH - ((v - min) / (max - min)) * innerH;
+
+  const linePts = points.map((p, i) => `${x(i).toFixed(1)},${y(p.v).toFixed(1)}`).join(" ");
+  const areaPts = `${pad.left},${pad.top + innerH} ${linePts} ${pad.left + innerW},${pad.top + innerH}`;
+
+  const first = points[0];
+  const lastP = points[points.length - 1];
+  const trendUp = lastP.v >= first.v;
+  const stroke = trendUp ? "#64d6a3" : "#ff7d7d";
+  const changePct = first.v ? ((lastP.v - first.v) / first.v) * 100 : 0;
+
+  const lastX = x(points.length - 1);
+  const lastY = y(lastP.v);
+
+  elements.chart.innerHTML = `
+    <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" class="chart-svg" role="img"
+         aria-label="نمودار روند ارزش کل دارایی‌ها">
+      <defs>
+        <linearGradient id="chartFill" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="${stroke}" stop-opacity="0.28" />
+          <stop offset="100%" stop-color="${stroke}" stop-opacity="0" />
+        </linearGradient>
+      </defs>
+      <polygon points="${areaPts}" fill="url(#chartFill)" />
+      <polyline points="${linePts}" fill="none" stroke="${stroke}" stroke-width="2.5"
+                stroke-linejoin="round" stroke-linecap="round" />
+      <circle cx="${lastX.toFixed(1)}" cy="${lastY.toFixed(1)}" r="4.5" fill="${stroke}" />
+    </svg>
+    <div class="chart-meta">
+      <div>
+        <span>ارزش فعلی</span>
+        <strong>${formatMoney(lastP.v, chartCurrency)}</strong>
+      </div>
+      <div class="chart-change ${trendUp ? "up" : "down"}">
+        ${trendUp ? "▲" : "▼"} ${formatNumber(Math.abs(changePct), 1)}٪
+        <small>از ${toFaDate(first.t)}</small>
+      </div>
+      <div class="chart-range">
+        <span>کمینه ${formatMoney(min, chartCurrency)}</span>
+        <span>بیشینه ${formatMoney(max, chartCurrency)}</span>
+      </div>
+    </div>`;
+}
+
+function setChartCurrency(currency) {
+  chartCurrency = currency;
+  elements.chartToggle.querySelectorAll(".chart-cur").forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.currency === currency);
+  });
+  renderChart();
+}
+
+/* ---------- Online refresh ---------- */
+
+async function fetchQuotes(items) {
+  const response = await fetch("/api/quote", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    cache: "no-store",
+    body: JSON.stringify({ items }),
+  });
+  if (!response.ok) throw new Error(`quote failed: ${response.status}`);
+  return response.json();
+}
+
+async function refreshPrices() {
+  elements.refreshPrices.disabled = true;
+  elements.refreshPrices.classList.add("is-loading");
+  elements.refreshLabel.textContent = "در حال بروزرسانی...";
+
+  const items = [];
+  for (const [rate, ref] of Object.entries(RATE_REFS)) {
+    items.push({ id: `rate:${rate}`, ...ref });
+  }
+  state.assets.forEach((asset) => {
+    if (asset.ref?.provider && asset.ref?.code) {
+      items.push({ id: `asset:${asset.id}`, ...asset.ref });
+    }
+  });
+
+  try {
+    const data = await fetchQuotes(items);
+    const results = data.results || {};
+    let successful = 0;
+
+    for (const [rate, ref] of Object.entries(RATE_REFS)) {
+      const price = results[`rate:${rate}`];
+      if (price?.value) {
+        state[rate] = price.value;
+        elements[rate].value = price.value;
+        successful += 1;
+      }
+    }
+
+    state.assets = state.assets.map((asset) => {
+      const price = results[`asset:${asset.id}`];
+      if (price?.value && price?.currency) {
+        successful += 1;
+        return { ...asset, price: price.value, currency: price.currency };
+      }
+      return asset;
+    });
+
+    const failed = items.length - successful;
+    state.lastUpdated = new Date().toISOString();
+    state.priceStatus =
+      failed === 0
+        ? "همه نرخ‌ها با موفقیت بروزرسانی شدند."
+        : `${successful} نرخ بروزرسانی شد و ${failed} نرخ در دسترس نبود.`;
+
+    renderRows();
+    renderTotals();
+    showToast(state.priceStatus, failed === 0 ? "success" : "info");
+  } catch {
+    state.priceStatus = "بروزرسانی آنلاین ناموفق بود؛ نرخ‌ها را دستی وارد کنید.";
+    renderTotals();
+    showToast(state.priceStatus, "error");
+  } finally {
+    elements.refreshPrices.disabled = false;
+    elements.refreshPrices.classList.remove("is-loading");
+    elements.refreshLabel.textContent = "بروزرسانی آنلاین قیمت‌ها";
+  }
+}
+
+/* ---------- Dialog helpers ---------- */
+
+function openDialog(dialog) {
+  if (typeof dialog.showModal === "function") dialog.showModal();
+  else dialog.setAttribute("open", "");
+}
+
+function closeDialog(dialog) {
+  if (dialog.open) dialog.close();
+  else dialog.removeAttribute("open");
+}
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, (char) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]),
+  );
+}
+
+function toFaDate(iso) {
+  try {
+    return new Date(iso).toLocaleDateString("fa-IR", { month: "short", day: "numeric" });
+  } catch {
+    return iso;
+  }
+}
+
+/* ---------- Wire up ---------- */
+
+function bindEvents() {
+  elements.usdToIrr.value = state.usdToIrr;
+  elements.eurToIrr.value = state.eurToIrr;
+  elements.usdToIrr.addEventListener("input", renderTotals);
+  elements.eurToIrr.addEventListener("input", renderTotals);
+  elements.refreshPrices.addEventListener("click", refreshPrices);
+
+  // Manual asset dialog
+  elements.openCustomDialog.addEventListener("click", () => {
+    openDialog(elements.customDialog);
+    elements.customTitle.focus();
+  });
+  elements.closeCustomDialog.addEventListener("click", () => closeDialog(elements.customDialog));
+  elements.customAssetForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    addCustomAsset();
+  });
+
+  // Market search dialog
+  elements.openMarketDialog.addEventListener("click", () => {
+    openDialog(elements.marketDialog);
+    elements.marketSearch.focus();
+  });
+  elements.closeMarketDialog.addEventListener("click", () => closeDialog(elements.marketDialog));
+  elements.marketSearch.addEventListener("input", onMarketSearchInput);
+
+  // Close dialogs on backdrop click / cancel buttons
+  [elements.customDialog, elements.marketDialog].forEach((dialog) => {
+    dialog.addEventListener("click", (event) => {
+      if (event.target === dialog) closeDialog(dialog);
+    });
+  });
+  document.querySelectorAll("[data-dialog-close]").forEach((button) => {
+    button.addEventListener("click", () => closeDialog(button.closest("dialog")));
+  });
+
+  // Chart currency toggle
+  elements.chartToggle.addEventListener("click", (event) => {
+    const button = event.target.closest(".chart-cur");
+    if (button) setChartCurrency(button.dataset.currency);
+  });
+
+  elements.resetData.addEventListener("click", () => {
+    if (!confirm("همه مقدارها، نرخ‌ها و تاریخچه پاک شوند؟")) return;
+    state = structuredClone(defaultState);
+    saveState();
+    elements.usdToIrr.value = state.usdToIrr;
+    elements.eurToIrr.value = state.eurToIrr;
+    renderRows();
+    renderTotals();
+    showToast("داده‌ها به حالت اولیه بازنشانی شد.", "info");
+  });
+}
+
+bindEvents();
+renderRows();
+renderTotals();

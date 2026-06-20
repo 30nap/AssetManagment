@@ -3,8 +3,9 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark light" />
     <title>داشبورد دارایی‌ها</title>
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
   </head>
   <body>
     <main class="app-shell">
@@ -17,7 +18,9 @@
           </p>
         </div>
         <div class="hero-actions">
-          <button id="refresh-prices" type="button">بروزرسانی آنلاین قیمت‌ها</button>
+          <button id="refresh-prices" type="button">
+            <span class="btn-label">بروزرسانی آنلاین قیمت‌ها</span>
+          </button>
           <button id="reset-data" class="secondary" type="button">بازنشانی داده‌ها</button>
         </div>
       </section>
@@ -39,39 +42,19 @@
         </article>
       </section>
 
-      <section class="inflation-panel" aria-label="اثر تورم ایران روی دارایی‌ها">
-        <div>
-          <p class="eyebrow">قدرت خرید</p>
-          <h2>دارایی‌ها نسبت به تورم ایران</h2>
-          <p>
-            نرخ تورم سالانه را وارد کنید تا ببینید ارزش واقعی دارایی‌ها در پایان سال، با فرض ثابت ماندن قیمت‌ها،
-            چقدر کاهش پیدا می‌کند.
-          </p>
+      <section class="history-panel" aria-label="روند ارزش کل دارایی‌ها">
+        <div class="section-heading">
+          <div>
+            <h2>روند ارزش کل دارایی‌ها</h2>
+            <p>هر روز که از داشبورد بازدید کنید، ارزش کل آن روز ثبت می‌شود و نمودار زیر رشد دارایی‌ها را در طول زمان نشان می‌دهد.</p>
+          </div>
+          <div class="chart-toggle" role="group" aria-label="واحد نمودار">
+            <button type="button" class="chart-cur is-active" data-currency="IRR">تومان</button>
+            <button type="button" class="chart-cur" data-currency="USD">دلار</button>
+            <button type="button" class="chart-cur" data-currency="EUR">یورو</button>
+          </div>
         </div>
-        <div class="inflation-controls">
-          <label>
-            نرخ تورم سالانه
-            <div class="percent-input">
-              <input id="inflation-rate" inputmode="decimal" type="number" min="0" step="0.1" />
-              <span>٪</span>
-            </div>
-          </label>
-        </div>
-        <div class="inflation-results">
-          <article>
-            <span>ارزش واقعی بعد از تورم</span>
-            <strong id="inflation-real-value">۰ تومان</strong>
-          </article>
-          <article>
-            <span>کاهش قدرت خرید</span>
-            <strong id="inflation-loss">۰ تومان</strong>
-          </article>
-          <article>
-            <span>رشد لازم برای حفظ ارزش</span>
-            <strong id="inflation-needed-growth">۰٪</strong>
-          </article>
-        </div>
-        <p id="inflation-note" class="inflation-note">برای محاسبه، مقدار دارایی‌ها را وارد کنید.</p>
+        <div id="chart" class="chart"></div>
       </section>
 
       <section class="controls-panel">
@@ -98,7 +81,10 @@
               <h2>لیست دارایی‌ها</h2>
               <p>مقدار و قیمت واحد را هر زمان خواستید تغییر دهید؛ داده‌ها روی همین مرورگر ذخیره می‌شوند.</p>
             </div>
-            <button id="open-custom-dialog" class="secondary" type="button">افزودن دارایی دستی</button>
+            <div class="heading-actions">
+              <button id="open-market-dialog" type="button">افزودن از بازار</button>
+              <button id="open-custom-dialog" class="secondary" type="button">افزودن دستی</button>
+            </div>
           </div>
           <div class="table-wrap">
             <table>
@@ -110,7 +96,7 @@
                   <th>ارزش تومان</th>
                   <th>ارزش دلار</th>
                   <th>ارزش یورو</th>
-                  <th>عملیات</th>
+                  <th><span class="sr-only">عملیات</span></th>
                 </tr>
               </thead>
               <tbody id="assets-body"></tbody>
@@ -123,7 +109,7 @@
           <div class="donut-wrap">
             <div id="donut" class="donut" aria-hidden="true"></div>
             <div class="donut-center">
-              <span>کل</span>
+              <span>کل (تومان)</span>
               <strong id="donut-total">۰</strong>
             </div>
           </div>
@@ -136,24 +122,47 @@
       </footer>
     </main>
 
+    <!-- Add from market (live search) -->
+    <dialog id="market-dialog" class="custom-dialog" aria-labelledby="market-dialog-title">
+      <div class="custom-dialog-card">
+        <div class="dialog-heading">
+          <div>
+            <p class="eyebrow">بازارها</p>
+            <h2 id="market-dialog-title">افزودن از بازار</h2>
+            <p>جستجو در بورس تهران، طلا، ارز و ارز دیجیتال. روی نتیجه بزنید تا با قیمت زنده اضافه شود.</p>
+          </div>
+          <button id="close-market-dialog" class="icon-button" type="button" aria-label="بستن">×</button>
+        </div>
+        <label class="market-search-label">
+          جستجو
+          <input id="market-search" type="search" autocomplete="off"
+                 placeholder="مثلا: فولاد، خودرو، طلای ۱۸، دلار، بیت کوین..." />
+        </label>
+        <div id="market-results" class="market-results">
+          <p class="market-hint">برای شروع، نام یک دارایی را تایپ کنید.</p>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- Add manual asset (no online source) -->
     <dialog id="custom-asset-dialog" class="custom-dialog" aria-labelledby="custom-dialog-title">
       <form id="custom-asset-form" class="custom-dialog-card">
         <div class="dialog-heading">
           <div>
             <p class="eyebrow">دارایی جدید</p>
             <h2 id="custom-dialog-title">افزودن دارایی دستی</h2>
-            <p>برای صندوق سهامی، سهام، سپرده یا هر دارایی دیگری که منبع آنلاین ندارد.</p>
+            <p>برای صندوق سهامی، سپرده یا هر دارایی دیگری که منبع آنلاین ندارد.</p>
           </div>
           <button id="close-custom-dialog" class="icon-button" type="button" aria-label="بستن">×</button>
         </div>
         <div class="custom-grid">
           <label>
             نام دارایی
-            <input id="custom-title" type="text" placeholder="مثلا صندوق سهامی کاریزما" />
+            <input id="custom-title" type="text" placeholder="مثلا صندوق سهامی کاریزما" required />
           </label>
           <label>
             واحد
-            <input id="custom-unit" type="text" placeholder="واحد، سهم، عدد..." />
+            <input id="custom-unit" type="text" placeholder="واحد، سهم, عدد..." />
           </label>
           <label>
             مقدار
@@ -191,11 +200,11 @@
           </div>
         </td>
         <td>
-          <input class="amount-input" inputmode="decimal" type="number" min="0" step="any" />
+          <input class="amount-input" inputmode="decimal" type="number" min="0" step="any" aria-label="مقدار" />
         </td>
         <td>
           <div class="price-input-group">
-            <input class="price-input" inputmode="decimal" type="number" min="0" step="any" />
+            <input class="price-input" inputmode="decimal" type="number" min="0" step="any" aria-label="قیمت واحد" />
             <select class="price-currency" aria-label="واحد قیمت">
               <option value="IRR">تومان</option>
               <option value="USD">دلار</option>
@@ -207,11 +216,13 @@
         <td class="value-usd"></td>
         <td class="value-eur"></td>
         <td class="row-action-cell">
-          <button class="delete-asset" type="button">حذف</button>
+          <button class="delete-asset" type="button" aria-label="حذف دارایی">حذف</button>
         </td>
       </tr>
     </template>
 
-    <script src="app.js"></script>
+    <div id="toast-region" class="toast-region" role="status" aria-live="polite"></div>
+
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
   </body>
 </html>
