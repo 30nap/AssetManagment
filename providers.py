@@ -17,8 +17,8 @@ def search(query: str) -> list[dict]:
     """Search every provider and merge the results.
 
     TGJU (curated catalog) is fast/local; TSETMC hits the network. If the
-    stock lookup fails (e.g. blocked outbound on PythonAnywhere free tier) we
-    still return the catalog matches instead of erroring out.
+    stock lookup fails we still return the catalog matches instead of
+    erroring out.
     """
     results = tgju.search(query)
     try:

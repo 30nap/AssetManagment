@@ -1,12 +1,10 @@
 """Asset dashboard web app (Flask).
 
 Serves the Persian asset dashboard and proxies live price lookups to the
-market providers (TGJU for gold/currency/crypto, TSETMC for stocks).
+market providers (TGJU for gold/currency/crypto, TSETMC for stocks and ETFs).
 
-The module is named ``flask_app`` because that is the entry point
-PythonAnywhere expects by default.
-
-Run locally::
+Double-click ``run.bat`` (Windows) or ``run.command`` (macOS/Linux) to start
+it. To run it by hand, with the reloader on::
 
     pip install -r requirements.txt
     python flask_app.py

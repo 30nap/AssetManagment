@@ -1,9 +1,7 @@
 """TGJU provider: gold, currencies, coins and crypto.
 
 Reads each instrument's public profile page on tgju.org and extracts the
-current price. Rial values are converted to toman. Designed to work behind
-the PythonAnywhere outbound proxy: ``requests`` honours the ``HTTPS_PROXY`` /
-``HTTP_PROXY`` environment variables PythonAnywhere sets for you.
+current price. Rial values are converted to toman.
 """
 
 from __future__ import annotations
