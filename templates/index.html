@@ -25,12 +25,30 @@
         </div>
       </section>
 
+      <div id="rebalance-alert" class="rebalance-alert" role="status" hidden>
+        <span class="rebalance-icon" aria-hidden="true">⚠</span>
+        <div>
+          <strong>وقت تعادل‌بخشی است</strong>
+          <p id="rebalance-assets"></p>
+        </div>
+      </div>
+
       <section class="summary-grid" aria-label="خلاصه ارزش دارایی‌ها">
         <article class="summary-card total-card">
           <span>ارزش کل به تومان</span>
           <strong id="total-irr">۰ تومان</strong>
           <small id="last-updated">هنوز بروزرسانی نشده</small>
           <small id="price-status">قیمت‌های اولیه قابل ویرایش هستند.</small>
+        </article>
+        <article class="summary-card">
+          <span>سرمایه‌گذاری (پایه درصدها)</span>
+          <strong id="total-investable">۰ تومان</strong>
+          <small>ارزش کل منهای بالشتک اضطراری</small>
+        </article>
+        <article class="summary-card">
+          <span>بالشتک اضطراری</span>
+          <strong id="total-cushion">۰ تومان</strong>
+          <small id="cushion-note">تعریف نشده است.</small>
         </article>
         <article class="summary-card">
           <span>ارزش کل به دلار</span>
@@ -74,12 +92,35 @@
         </div>
       </section>
 
+      <section class="controls-panel">
+        <div>
+          <h2>بالشتک اضطراری</h2>
+          <p>
+            مبلغی که برای روز مبادا کنار گذاشته‌اید. در ارزش کل حساب می‌شود، ولی از پایه‌ی محاسبه‌ی
+            درصدها و از ارزش دارایی میزبان کنار گذاشته می‌شود تا تعادل‌بخشی به هم نریزد.
+          </p>
+        </div>
+        <div class="rates-grid">
+          <label>
+            مبلغ بالشتک (تومان)
+            <input id="cushion-amount" inputmode="decimal" type="number" min="0" step="100000" />
+          </label>
+          <label>
+            نگهداری در دارایی
+            <select id="cushion-asset">
+              <option value="">— انتخاب نشده —</option>
+            </select>
+          </label>
+        </div>
+      </section>
+
       <section class="content-grid">
         <section class="assets-panel">
           <div class="section-heading">
             <div>
               <h2>لیست دارایی‌ها</h2>
               <p>مقدار و قیمت واحد را هر زمان خواستید تغییر دهید؛ داده‌ها روی همین مرورگر ذخیره می‌شوند.</p>
+              <p class="target-sum">مجموع درصدهای هدف: <strong id="target-sum">۰٪</strong></p>
             </div>
             <div class="heading-actions">
               <button id="open-market-dialog" type="button">افزودن از بازار</button>
@@ -94,6 +135,9 @@
                   <th>مقدار</th>
                   <th>قیمت واحد</th>
                   <th>ارزش تومان</th>
+                  <th>هدف ٪</th>
+                  <th>واقعی ٪</th>
+                  <th>انحراف</th>
                   <th>ارزش دلار</th>
                   <th>ارزش یورو</th>
                   <th><span class="sr-only">عملیات</span></th>
@@ -109,7 +153,7 @@
           <div class="donut-wrap">
             <div id="donut" class="donut" aria-hidden="true"></div>
             <div class="donut-center">
-              <span>کل (تومان)</span>
+              <span>سرمایه‌گذاری (تومان)</span>
               <strong id="donut-total">۰</strong>
             </div>
           </div>
@@ -129,14 +173,14 @@
           <div>
             <p class="eyebrow">بازارها</p>
             <h2 id="market-dialog-title">افزودن از بازار</h2>
-            <p>جستجو در بورس تهران، طلا، ارز و ارز دیجیتال. روی نتیجه بزنید تا با قیمت زنده اضافه شود.</p>
+            <p>جستجو در بورس تهران (سهام و صندوق‌های قابل معامله)، طلا، ارز و ارز دیجیتال. روی نتیجه بزنید تا با قیمت زنده اضافه شود.</p>
           </div>
           <button id="close-market-dialog" class="icon-button" type="button" aria-label="بستن">×</button>
         </div>
         <label class="market-search-label">
           جستجو
           <input id="market-search" type="search" autocomplete="off"
-                 placeholder="مثلا: فولاد، خودرو، طلای ۱۸، دلار، بیت کوین..." />
+                 placeholder="مثلا: عیار، آگاس، فولاد، طلای ۱۸، دلار، بیت کوین..." />
         </label>
         <div id="market-results" class="market-results">
           <p class="market-hint">برای شروع، نام یک دارایی را تایپ کنید.</p>
@@ -180,6 +224,10 @@
               <option value="EUR">یورو</option>
             </select>
           </label>
+          <label>
+            درصد هدف
+            <input id="custom-target" inputmode="decimal" type="number" min="0" max="100" step="any" placeholder="۰" />
+          </label>
         </div>
         <div class="dialog-actions">
           <button id="add-custom-asset" type="submit">اضافه کردن</button>
@@ -196,6 +244,7 @@
             <div>
               <strong class="asset-title"></strong>
               <small class="asset-unit"></small>
+              <small class="asset-fresh"></small>
             </div>
           </div>
         </td>
@@ -213,6 +262,11 @@
           </div>
         </td>
         <td class="value-irr"></td>
+        <td class="target-cell">
+          <input class="target-input" inputmode="decimal" type="number" min="0" max="100" step="any" aria-label="درصد هدف" />
+        </td>
+        <td class="actual-cell"></td>
+        <td class="deviation-cell"></td>
         <td class="value-usd"></td>
         <td class="value-eur"></td>
         <td class="row-action-cell">

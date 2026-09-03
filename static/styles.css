@@ -12,6 +12,8 @@
   --green: #64d6a3;
   --blue: #7cb7ff;
   --red: #ff7d7d;
+  --amber: #f6d27e;
+  --warn: #ff9f68;
   --shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
 }
 
@@ -164,7 +166,7 @@ button.is-loading::before {
 
 .summary-grid {
   display: grid;
-  grid-template-columns: 1.4fr 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(196px, 1fr));
   gap: 16px;
   margin: 18px 0;
 }
@@ -391,7 +393,7 @@ select:focus {
 
 .content-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 340px;
+  grid-template-columns: minmax(0, 1fr) 300px;
   gap: 18px;
 }
 
@@ -419,12 +421,12 @@ select:focus {
 table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 1040px;
+  min-width: 1180px;
 }
 
 th,
 td {
-  padding: 14px 10px;
+  padding: 13px 8px;
   border-bottom: 1px solid var(--line);
   text-align: right;
   vertical-align: middle;
@@ -480,7 +482,7 @@ td:first-child {
 
 .price-input-group {
   display: grid;
-  grid-template-columns: minmax(120px, 1fr) 88px;
+  grid-template-columns: minmax(94px, 1fr) 80px;
   gap: 8px;
 }
 
@@ -765,6 +767,105 @@ td:first-child {
 
 .toast-info {
   border-color: rgba(124, 183, 255, 0.45);
+}
+
+/* Rebalance alert */
+.rebalance-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin: 18px 0 0;
+  padding: 18px 22px;
+  border: 1px solid rgba(255, 159, 104, 0.5);
+  border-radius: 22px;
+  background: rgba(255, 159, 104, 0.12);
+  box-shadow: var(--shadow);
+}
+
+.rebalance-alert[hidden] {
+  display: none;
+}
+
+.rebalance-icon {
+  font-size: 1.3rem;
+  line-height: 1.6;
+}
+
+.rebalance-alert strong {
+  display: block;
+  color: var(--warn);
+  font-size: 1.05rem;
+}
+
+.rebalance-alert p {
+  margin: 6px 0 0;
+  color: var(--text);
+  font-size: 0.92rem;
+  line-height: 1.9;
+}
+
+/* Cushion note */
+.summary-card small.is-off {
+  color: var(--warn);
+}
+
+/* Target / deviation columns */
+.target-sum {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.target-sum strong {
+  color: var(--green);
+}
+
+.target-sum strong.is-off {
+  color: var(--warn);
+}
+
+.target-cell {
+  min-width: 78px;
+}
+
+.target-input {
+  min-height: 38px;
+}
+
+.actual-cell,
+.deviation-cell {
+  min-width: 72px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.dev-ok {
+  color: var(--green);
+}
+
+.dev-warn {
+  color: var(--amber);
+}
+
+.dev-alert {
+  color: var(--warn);
+}
+
+.dev-none {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+/* Price freshness */
+.asset-fresh {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.asset-fresh.is-stale {
+  color: var(--amber);
 }
 
 @media (max-width: 960px) {

@@ -1,6 +1,12 @@
 const STORAGE_KEY = "asset-dashboard-v1";
 const MAX_HISTORY = 180;
 
+// Deviation thresholds (percentage points, absolute).
+const DEVIATION_OK = 2;
+const DEVIATION_WARN = 5;
+// A price older than this is flagged as stale in the asset table.
+const STALE_PRICE_MS = 24 * 60 * 60 * 1000;
+
 const colors = [
   "#f1b84b", "#f6d27e", "#7cb7ff", "#64d6a3", "#a78bfa",
   "#ff9f68", "#ff7d7d", "#4dd4d4", "#c9f27a", "#d7b3ff", "#e8e1d3",
@@ -17,6 +23,8 @@ const defaultState = {
   eurToIrr: 66500,
   lastUpdated: null,
   priceStatus: "قیمت‌های اولیه قابل ویرایش هستند.",
+  // Emergency cushion: an amount (toman) parked inside one of the assets.
+  cushion: { amount: 0, assetId: null },
   assets: [
     { id: "gold18", title: "طلا ۱۸ عیار", unit: "گرم", amount: 0, price: 4575000, currency: "IRR", icon: "۱۸", ref: { provider: "tgju", code: "geram18" } },
     { id: "gold24", title: "طلا ۲۴ عیار", unit: "گرم", amount: 0, price: 6100000, currency: "IRR", icon: "۲۴", ref: { provider: "tgju", code: "geram24" } },
@@ -29,7 +37,7 @@ const defaultState = {
     { id: "halfcoin", title: "نیم سکه", unit: "عدد", amount: 0, price: 23500000, currency: "IRR", icon: "ن", ref: { provider: "tgju", code: "nim" } },
     { id: "quartercoin", title: "ربع سکه", unit: "عدد", amount: 0, price: 15000000, currency: "IRR", icon: "ر", ref: { provider: "tgju", code: "rob" } },
     { id: "irr", title: "تومان", unit: "تومان", amount: 0, price: 1, currency: "IRR", icon: "ت" },
-  ],
+  ].map((asset) => ({ ...asset, target: 0, priceUpdatedAt: null })),
   history: [],
 };
 
@@ -45,12 +53,20 @@ const elements = {
   rowTemplate: document.querySelector("#asset-row-template"),
   usdToIrr: document.querySelector("#usd-to-irr"),
   eurToIrr: document.querySelector("#eur-to-irr"),
+  cushionAmount: document.querySelector("#cushion-amount"),
+  cushionAsset: document.querySelector("#cushion-asset"),
+  cushionNote: document.querySelector("#cushion-note"),
   refreshPrices: document.querySelector("#refresh-prices"),
   refreshLabel: document.querySelector("#refresh-prices .btn-label"),
   resetData: document.querySelector("#reset-data"),
   totalIrr: document.querySelector("#total-irr"),
+  totalInvestable: document.querySelector("#total-investable"),
+  totalCushion: document.querySelector("#total-cushion"),
   totalUsd: document.querySelector("#total-usd"),
   totalEur: document.querySelector("#total-eur"),
+  targetSum: document.querySelector("#target-sum"),
+  rebalanceAlert: document.querySelector("#rebalance-alert"),
+  rebalanceAssets: document.querySelector("#rebalance-assets"),
   lastUpdated: document.querySelector("#last-updated"),
   priceStatus: document.querySelector("#price-status"),
   donut: document.querySelector("#donut"),
@@ -63,6 +79,7 @@ const elements = {
   customAmount: document.querySelector("#custom-amount"),
   customPrice: document.querySelector("#custom-price"),
   customCurrency: document.querySelector("#custom-currency"),
+  customTarget: document.querySelector("#custom-target"),
   customDialog: document.querySelector("#custom-asset-dialog"),
   customAssetForm: document.querySelector("#custom-asset-form"),
   openCustomDialog: document.querySelector("#open-custom-dialog"),
@@ -75,6 +92,24 @@ const elements = {
   toastRegion: document.querySelector("#toast-region"),
 };
 
+/* ---------- State ---------- */
+
+// Fields added after v1 shipped; old saved payloads simply don't have them.
+function normalizeAsset(asset) {
+  return {
+    ...asset,
+    target: toNumber(asset.target),
+    priceUpdatedAt: asset.priceUpdatedAt || null,
+  };
+}
+
+function normalizeCushion(cushion) {
+  return {
+    amount: Math.max(0, toNumber(cushion?.amount)),
+    assetId: cushion?.assetId || null,
+  };
+}
+
 function loadState() {
   const saved = localStorage.getItem(STORAGE_KEY);
   if (!saved) return structuredClone(defaultState);
@@ -85,7 +120,7 @@ function loadState() {
     const defaultIds = new Set(defaultState.assets.map((asset) => asset.id));
     const customAssets = (parsed.assets || [])
       .filter((asset) => !defaultIds.has(asset.id))
-      .map((asset) => ({
+      .map((asset) => normalizeAsset({
         ...asset,
         icon: asset.icon || asset.title?.slice(0, 2) || "+",
         custom: true,
@@ -96,13 +131,14 @@ function loadState() {
       ...parsed,
       // Always re-attach default refs so backend changes propagate.
       assets: [
-        ...defaultState.assets.map((asset) => ({
+        ...defaultState.assets.map((asset) => normalizeAsset({
           ...asset,
           ...(savedMap.get(asset.id) || {}),
           ref: DEFAULT_REFS.get(asset.id),
         })),
         ...customAssets,
       ],
+      cushion: normalizeCushion(parsed.cushion),
       history: Array.isArray(parsed.history) ? parsed.history : [],
     };
   } catch {
@@ -140,6 +176,15 @@ function formatMoney(value, currency) {
   return `${formatNumber(value)} تومان`;
 }
 
+function formatPercent(value, digits = 1) {
+  return `${formatNumber(value, digits)}٪`;
+}
+
+function formatSignedPercent(value, digits = 1) {
+  const sign = value >= 0 ? "+" : "−";
+  return `${sign}${formatNumber(Math.abs(value), digits)}٪`;
+}
+
 function showToast(message, type = "info") {
   const toast = document.createElement("div");
   toast.className = `toast toast-${type}`;
@@ -150,6 +195,121 @@ function showToast(message, type = "info") {
     toast.classList.remove("is-visible");
     toast.addEventListener("transitionend", () => toast.remove(), { once: true });
   }, 3600);
+}
+
+/* ---------- Price freshness ---------- */
+
+// "auto" would turn a 40-hour-old price into «پریروز»; "always" keeps it «۲ روز پیش».
+const relativeTimeFormat = new Intl.RelativeTimeFormat("fa", { numeric: "always" });
+
+// Returns { text, stale } for the "last priced N ago" line under each asset.
+function freshness(asset) {
+  // An asset you don't hold has no price worth nagging about.
+  if (!asset.amount) return { text: "", stale: false };
+  if (!asset.priceUpdatedAt) return { text: "⚠ قیمت هنوز بروزرسانی نشده", stale: true };
+
+  const then = new Date(asset.priceUpdatedAt).getTime();
+  if (!Number.isFinite(then)) return { text: "⚠ قیمت هنوز بروزرسانی نشده", stale: true };
+
+  const elapsed = Date.now() - then;
+  const minutes = Math.round(elapsed / 60000);
+  let text;
+  if (minutes < 1) text = "همین حالا";
+  else if (minutes < 60) text = relativeTimeFormat.format(-minutes, "minute");
+  else if (elapsed < STALE_PRICE_MS) text = relativeTimeFormat.format(-Math.round(elapsed / 3600000), "hour");
+  else text = relativeTimeFormat.format(-Math.round(elapsed / 86400000), "day");
+
+  const stale = elapsed >= STALE_PRICE_MS;
+  return { text: stale ? `⚠ ${text}` : text, stale };
+}
+
+function renderFreshness() {
+  state.assets.forEach((asset) => {
+    const cell = elements.assetsBody.querySelector(`[data-asset-id="${asset.id}"] .asset-fresh`);
+    if (!cell) return;
+    const { text, stale } = freshness(asset);
+    cell.textContent = text;
+    cell.classList.toggle("is-stale", stale);
+  });
+}
+
+/* ---------- Portfolio maths ---------- */
+
+function getAssetValue(asset) {
+  const valueIrr = asset.amount * convertToIrr(asset.price, asset.currency);
+  return {
+    irr: valueIrr,
+    usd: state.usdToIrr ? valueIrr / state.usdToIrr : 0,
+    eur: state.eurToIrr ? valueIrr / state.eurToIrr : 0,
+  };
+}
+
+/**
+ * The cushion is part of the *total* value, but it is taken out of the
+ * denominator and out of the asset that holds it. Otherwise that asset always
+ * reads above target and every rebalance is wrong.
+ *
+ *   investable   = total − cushion
+ *   net(asset)   = value(asset) − (asset holds the cushion ? cushion : 0)
+ *   actual%      = net(asset) / investable × 100
+ */
+function computePortfolio() {
+  const rows = state.assets.map((asset, index) => {
+    const values = getAssetValue(asset);
+    return {
+      asset,
+      color: colors[index % colors.length],
+      irr: values.irr,
+      usd: values.usd,
+      eur: values.eur,
+      target: Math.max(0, toNumber(asset.target)),
+    };
+  });
+
+  const totalIrr = rows.reduce((sum, row) => sum + row.irr, 0);
+  const totalUsd = rows.reduce((sum, row) => sum + row.usd, 0);
+  const totalEur = rows.reduce((sum, row) => sum + row.eur, 0);
+
+  const host = rows.find((row) => row.asset.id === state.cushion.assetId);
+  const requested = Math.max(0, toNumber(state.cushion.amount));
+  // Never let the cushion exceed the asset that is supposed to hold it,
+  // otherwise percentages would go negative.
+  const cushion = host ? Math.min(requested, host.irr) : 0;
+  const investable = totalIrr - cushion;
+
+  const targetSum = rows.reduce((sum, row) => sum + row.target, 0);
+  // Without a single target there is no plan to deviate from, so deviations
+  // (and the rebalance banner) stay silent instead of flagging everything.
+  const hasPlan = targetSum > 0;
+
+  rows.forEach((row) => {
+    row.netIrr = row === host ? row.irr - cushion : row.irr;
+    row.actual = investable > 0 ? (row.netIrr / investable) * 100 : 0;
+    row.deviation = row.actual - row.target;
+    // Rows that are neither held nor planned stay out of the deviation report.
+    row.tracked = hasPlan && (row.netIrr > 0 || row.target > 0);
+  });
+
+  return {
+    rows,
+    totalIrr,
+    totalUsd,
+    totalEur,
+    cushion,
+    requestedCushion: requested,
+    cushionHost: host || null,
+    investable,
+    targetSum,
+    hasPlan,
+    offTarget: rows.filter((row) => row.tracked && Math.abs(row.deviation) > DEVIATION_WARN),
+  };
+}
+
+function deviationClass(deviation) {
+  const size = Math.abs(deviation);
+  if (size < DEVIATION_OK) return "dev-ok";
+  if (size <= DEVIATION_WARN) return "dev-warn";
+  return "dev-alert";
 }
 
 /* ---------- Asset table ---------- */
@@ -169,14 +329,19 @@ function renderRows() {
     const amountInput = row.querySelector(".amount-input");
     const priceInput = row.querySelector(".price-input");
     const priceCurrency = row.querySelector(".price-currency");
+    const targetInput = row.querySelector(".target-input");
 
     amountInput.value = asset.amount;
     priceInput.value = asset.price;
     priceCurrency.value = asset.currency;
+    targetInput.value = asset.target;
 
     amountInput.addEventListener("input", () => updateAsset(asset.id, { amount: toNumber(amountInput.value) }));
-    priceInput.addEventListener("input", () => updateAsset(asset.id, { price: toNumber(priceInput.value) }));
+    priceInput.addEventListener("input", () =>
+      updateAsset(asset.id, { price: toNumber(priceInput.value), priceUpdatedAt: new Date().toISOString() }),
+    );
     priceCurrency.addEventListener("change", () => updateAsset(asset.id, { currency: priceCurrency.value }));
+    targetInput.addEventListener("input", () => updateAsset(asset.id, { target: toNumber(targetInput.value) }));
 
     const deleteButton = row.querySelector(".delete-asset");
     deleteButton.hidden = !asset.custom;
@@ -184,12 +349,32 @@ function renderRows() {
 
     elements.assetsBody.append(row);
   });
+
+  renderCushionOptions();
+  renderFreshness();
+}
+
+function renderCushionOptions() {
+  const select = elements.cushionAsset;
+  select.innerHTML = '<option value="">— انتخاب نشده —</option>';
+  state.assets.forEach((asset) => {
+    const option = document.createElement("option");
+    option.value = asset.id;
+    option.textContent = asset.title;
+    select.append(option);
+  });
+  // The stored asset may have been deleted meanwhile.
+  if (!state.assets.some((asset) => asset.id === state.cushion.assetId)) {
+    state.cushion.assetId = null;
+  }
+  select.value = state.cushion.assetId || "";
 }
 
 function updateAsset(id, patch) {
   state.assets = state.assets.map((asset) => (asset.id === id ? { ...asset, ...patch } : asset));
   saveState();
   renderTotals();
+  renderFreshness();
 }
 
 function deleteAsset(id) {
@@ -198,6 +383,7 @@ function deleteAsset(id) {
   if (!confirm(`دارایی «${asset.title}» حذف شود؟`)) return;
 
   state.assets = state.assets.filter((item) => item.id !== id);
+  if (state.cushion.assetId === id) state.cushion.assetId = null;
   saveState();
   renderRows();
   renderTotals();
@@ -212,6 +398,7 @@ function addCustomAsset() {
   const amount = toNumber(elements.customAmount.value);
   const price = toNumber(elements.customPrice.value);
   const currency = elements.customCurrency.value;
+  const target = Math.max(0, toNumber(elements.customTarget.value));
 
   if (!title) {
     elements.customTitle.focus();
@@ -220,9 +407,10 @@ function addCustomAsset() {
 
   state.assets.push({
     id: `custom-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-    title, unit, amount, price, currency,
+    title, unit, amount, price, currency, target,
     icon: title.slice(0, 2),
     custom: true,
+    priceUpdatedAt: new Date().toISOString(),
   });
 
   resetCustomAssetForm();
@@ -239,6 +427,7 @@ function resetCustomAssetForm() {
   elements.customAmount.value = "";
   elements.customPrice.value = "";
   elements.customCurrency.value = "IRR";
+  elements.customTarget.value = "";
 }
 
 /* ---------- Add from market (live search) ---------- */
@@ -283,12 +472,13 @@ function renderMarketResults(results) {
     button.className = "market-result";
     const symbol = item.symbol || item.name;
     const subtitle = item.name && item.name !== symbol ? `<small>${escapeHtml(item.name)}</small>` : "";
+    const tag = item.category === "fund" ? `${item.market || ""} · صندوق` : item.market || "";
     button.innerHTML = `
       <span class="market-result-main">
         <strong>${escapeHtml(symbol)}</strong>
         ${subtitle}
       </span>
-      <span class="market-tag">${escapeHtml(item.market || "")}</span>
+      <span class="market-tag">${escapeHtml(tag)}</span>
     `;
     button.addEventListener("click", () => addMarketAsset(item, button));
     elements.marketResults.append(button);
@@ -310,8 +500,10 @@ async function addMarketAsset(item, button) {
     amount: 0,
     price: 0,
     currency: item.currency || "IRR",
+    target: 0,
     icon: (item.symbol || item.name || "+").slice(0, 2),
     custom: true,
+    priceUpdatedAt: null,
     ref: { provider: item.provider, code: item.code },
   };
 
@@ -322,6 +514,7 @@ async function addMarketAsset(item, button) {
     if (price?.value) {
       asset.price = price.value;
       asset.currency = price.currency;
+      asset.priceUpdatedAt = new Date().toISOString();
     }
   } catch {
     /* keep price 0; user can refresh later */
@@ -337,58 +530,97 @@ async function addMarketAsset(item, button) {
 
 /* ---------- Totals, allocation ---------- */
 
-function getAssetValue(asset) {
-  const valueIrr = asset.amount * convertToIrr(asset.price, asset.currency);
-  return {
-    irr: valueIrr,
-    usd: state.usdToIrr ? valueIrr / state.usdToIrr : 0,
-    eur: state.eurToIrr ? valueIrr / state.eurToIrr : 0,
-  };
-}
-
 function renderTotals() {
   state.usdToIrr = toNumber(elements.usdToIrr.value);
   state.eurToIrr = toNumber(elements.eurToIrr.value);
+  state.cushion.amount = Math.max(0, toNumber(elements.cushionAmount.value));
+  state.cushion.assetId = elements.cushionAsset.value || null;
 
-  let totalIrr = 0;
-  let totalUsd = 0;
-  let totalEur = 0;
-  const allocations = [];
+  const portfolio = computePortfolio();
 
-  state.assets.forEach((asset, index) => {
-    const values = getAssetValue(asset);
-    totalIrr += values.irr;
-    totalUsd += values.usd;
-    totalEur += values.eur;
-    allocations.push({ ...asset, color: colors[index % colors.length], value: values.irr });
+  portfolio.rows.forEach((item) => {
+    const row = elements.assetsBody.querySelector(`[data-asset-id="${item.asset.id}"]`);
+    if (!row) return;
+    row.querySelector(".value-irr").textContent = formatMoney(item.irr, "IRR");
+    row.querySelector(".value-usd").textContent = formatMoney(item.usd, "USD");
+    row.querySelector(".value-eur").textContent = formatMoney(item.eur, "EUR");
 
-    const row = elements.assetsBody.querySelector(`[data-asset-id="${asset.id}"]`);
-    if (row) {
-      row.querySelector(".value-irr").textContent = formatMoney(values.irr, "IRR");
-      row.querySelector(".value-usd").textContent = formatMoney(values.usd, "USD");
-      row.querySelector(".value-eur").textContent = formatMoney(values.eur, "EUR");
+    const actualCell = row.querySelector(".actual-cell");
+    const deviationCell = row.querySelector(".deviation-cell");
+    if (item.tracked) {
+      actualCell.textContent = formatPercent(item.actual);
+      deviationCell.textContent = formatSignedPercent(item.deviation);
+      deviationCell.className = `deviation-cell ${deviationClass(item.deviation)}`;
+    } else {
+      actualCell.textContent = "—";
+      deviationCell.textContent = "—";
+      deviationCell.className = "deviation-cell dev-none";
     }
   });
 
-  elements.totalIrr.textContent = formatMoney(totalIrr, "IRR");
-  elements.totalUsd.textContent = formatMoney(totalUsd, "USD");
-  elements.totalEur.textContent = formatMoney(totalEur, "EUR");
-  elements.donutTotal.textContent = formatNumber(totalIrr);
+  elements.totalIrr.textContent = formatMoney(portfolio.totalIrr, "IRR");
+  elements.totalInvestable.textContent = formatMoney(portfolio.investable, "IRR");
+  elements.totalCushion.textContent = formatMoney(portfolio.cushion, "IRR");
+  elements.totalUsd.textContent = formatMoney(portfolio.totalUsd, "USD");
+  elements.totalEur.textContent = formatMoney(portfolio.totalEur, "EUR");
+  elements.donutTotal.textContent = formatNumber(portfolio.investable);
   elements.lastUpdated.textContent = state.lastUpdated
     ? `آخرین بروزرسانی: ${new Date(state.lastUpdated).toLocaleString("fa-IR")}`
     : "هنوز بروزرسانی نشده";
   elements.priceStatus.textContent = state.priceStatus;
 
-  recordHistory(totalIrr, totalUsd, totalEur);
-  renderAllocation(allocations, totalIrr);
+  renderCushionNote(portfolio);
+  renderTargetSum(portfolio);
+  renderRebalanceAlert(portfolio);
+  recordHistory(portfolio.totalIrr, portfolio.totalUsd, portfolio.totalEur);
+  renderAllocation(portfolio);
   renderChart();
   saveState();
 }
 
-function renderAllocation(allocations, totalIrr) {
-  const active = allocations.filter((item) => item.value > 0);
+function renderCushionNote(portfolio) {
+  const note = elements.cushionNote;
+  if (!portfolio.requestedCushion) {
+    note.textContent = "تعریف نشده است.";
+    note.classList.remove("is-off");
+    return;
+  }
+  if (!portfolio.cushionHost) {
+    note.textContent = "دارایی میزبان انتخاب نشده؛ در محاسبه اعمال نمی‌شود.";
+    note.classList.add("is-off");
+    return;
+  }
+  if (portfolio.requestedCushion > portfolio.cushionHost.irr) {
+    note.textContent = `ارزش «${portfolio.cushionHost.asset.title}» کمتر از بالشتک است؛ تا سقف همان دارایی اعمال شد.`;
+    note.classList.add("is-off");
+    return;
+  }
+  note.textContent = `نگهداری در «${portfolio.cushionHost.asset.title}»`;
+  note.classList.remove("is-off");
+}
 
-  if (!active.length || totalIrr <= 0) {
+function renderTargetSum(portfolio) {
+  elements.targetSum.textContent = formatPercent(portfolio.targetSum);
+  // Only flag a mismatch once the user has actually set targets.
+  const off = portfolio.targetSum > 0 && Math.abs(portfolio.targetSum - 100) > 0.01;
+  elements.targetSum.classList.toggle("is-off", off);
+}
+
+function renderRebalanceAlert(portfolio) {
+  if (!portfolio.offTarget.length) {
+    elements.rebalanceAlert.hidden = true;
+    return;
+  }
+  elements.rebalanceAlert.hidden = false;
+  elements.rebalanceAssets.textContent = portfolio.offTarget
+    .map((item) => `${item.asset.title} (${formatSignedPercent(item.deviation)})`)
+    .join("، ");
+}
+
+function renderAllocation(portfolio) {
+  const active = portfolio.rows.filter((item) => item.netIrr > 0);
+
+  if (!active.length || portfolio.investable <= 0) {
     elements.donut.style.background = "conic-gradient(rgba(255, 255, 255, 0.13) 0 100%)";
     elements.allocationList.innerHTML = '<p class="hero-copy">برای دیدن ترکیب دارایی، مقدارها را وارد کنید.</p>';
     return;
@@ -397,22 +629,19 @@ function renderAllocation(allocations, totalIrr) {
   let cursor = 0;
   const gradients = active.map((item) => {
     const start = cursor;
-    cursor += (item.value / totalIrr) * 100;
+    cursor += (item.netIrr / portfolio.investable) * 100;
     return `${item.color} ${start}% ${cursor}%`;
   });
 
   elements.donut.style.background = `conic-gradient(${gradients.join(", ")})`;
-  elements.allocationList.innerHTML = active
-    .sort((a, b) => b.value - a.value)
-    .map((item) => {
-      const percent = (item.value / totalIrr) * 100;
-      return `
+  elements.allocationList.innerHTML = [...active]
+    .sort((a, b) => b.netIrr - a.netIrr)
+    .map((item) => `
         <div class="allocation-item">
           <span class="dot" style="background:${item.color}"></span>
-          <span>${escapeHtml(item.title)}</span>
-          <strong>${formatNumber(percent, 1)}٪</strong>
-        </div>`;
-    })
+          <span>${escapeHtml(item.asset.title)}</span>
+          <strong>${formatPercent(item.actual)}</strong>
+        </div>`)
     .join("");
 }
 
@@ -546,6 +775,7 @@ async function refreshPrices() {
   try {
     const data = await fetchQuotes(items);
     const results = data.results || {};
+    const now = new Date().toISOString();
     let successful = 0;
 
     for (const [rate, ref] of Object.entries(RATE_REFS)) {
@@ -561,13 +791,13 @@ async function refreshPrices() {
       const price = results[`asset:${asset.id}`];
       if (price?.value && price?.currency) {
         successful += 1;
-        return { ...asset, price: price.value, currency: price.currency };
+        return { ...asset, price: price.value, currency: price.currency, priceUpdatedAt: now };
       }
       return asset;
     });
 
     const failed = items.length - successful;
-    state.lastUpdated = new Date().toISOString();
+    state.lastUpdated = now;
     state.priceStatus =
       failed === 0
         ? "همه نرخ‌ها با موفقیت بروزرسانی شدند."
@@ -618,8 +848,11 @@ function toFaDate(iso) {
 function bindEvents() {
   elements.usdToIrr.value = state.usdToIrr;
   elements.eurToIrr.value = state.eurToIrr;
+  elements.cushionAmount.value = state.cushion.amount;
   elements.usdToIrr.addEventListener("input", renderTotals);
   elements.eurToIrr.addEventListener("input", renderTotals);
+  elements.cushionAmount.addEventListener("input", renderTotals);
+  elements.cushionAsset.addEventListener("change", renderTotals);
   elements.refreshPrices.addEventListener("click", refreshPrices);
 
   // Manual asset dialog
@@ -663,10 +896,14 @@ function bindEvents() {
     saveState();
     elements.usdToIrr.value = state.usdToIrr;
     elements.eurToIrr.value = state.eurToIrr;
+    elements.cushionAmount.value = state.cushion.amount;
     renderRows();
     renderTotals();
     showToast("داده‌ها به حالت اولیه بازنشانی شد.", "info");
   });
+
+  // Keep the "3 hours ago" labels honest without re-rendering the table.
+  setInterval(renderFreshness, 60000);
 }
 
 bindEvents();
