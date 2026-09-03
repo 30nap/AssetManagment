@@ -1,9 +1,11 @@
 """Start the dashboard and open it in the browser.
 
-Meant to be launched by double-clicking ``run.bat`` (Windows) or
-``run.command`` (macOS/Linux), so it does the setup a first-time run needs:
-creates ``.venv``, installs the requirements into it, then serves the app.
-Stop it with Ctrl+C.
+Launched by ``run.ps1`` (Windows) or ``run.sh`` (macOS/Linux). Does the setup
+a first-time run needs: creates ``.venv``, installs the requirements into it,
+then serves the app. Stop it with Ctrl+C.
+
+Console output is deliberately plain ASCII English so it survives any terminal
+code page; the Persian belongs in the dashboard, not in the launcher.
 """
 
 from __future__ import annotations
@@ -46,11 +48,12 @@ def ensure_venv() -> Path | None:
     if venv_python().exists():
         return venv_python()
 
-    print("• ساخت محیط مجازی (.venv) — این کار فقط بار اول انجام می‌شود...")
+    print("==> Creating virtual environment (.venv), first run only...")
     try:
         subprocess.run([sys.executable, "-m", "venv", str(VENV_DIR)], check=True)
     except (subprocess.CalledProcessError, OSError) as error:
-        print(f"! ساخت محیط مجازی ممکن نشد ({error}); با پایتون فعلی ادامه می‌دهم.")
+        print(f"WARNING: could not create the virtual environment ({error}).")
+        print("         Continuing with the current Python instead.")
         return None
     return venv_python()
 
@@ -58,7 +61,7 @@ def ensure_venv() -> Path | None:
 def ensure_requirements(python: Path) -> None:
     """Install Flask/requests if they aren't importable yet.
 
-    Skipped once they are, so a normal start doesn't wait on the network —
+    Skipped once they are, so a normal start doesn't wait on the network,
     which also means an offline machine still launches after the first setup.
     """
     probe = subprocess.run(
@@ -68,15 +71,15 @@ def ensure_requirements(python: Path) -> None:
     if probe.returncode == 0:
         return
 
-    print("• نصب وابستگی‌ها (Flask و requests)...")
+    print("==> Installing dependencies (Flask, requests)...")
     install = subprocess.run(
         [str(python), "-m", "pip", "install", "--disable-pip-version-check", "-r", str(REQUIREMENTS)],
     )
     if install.returncode != 0:
         print(
-            "\n! نصب وابستگی‌ها ناموفق بود. اگر دسترسی به PyPI محدود است،"
-            "\n  یک آینه تنظیم کنید و دوباره اجرا کنید، مثلا:"
-            "\n      pip config set global.index-url https://mirror-pypi.runflare.com/simple"
+            "\nERROR: installing the dependencies failed."
+            "\n       If PyPI is unreachable, configure a mirror and run this again:"
+            "\n           pip config set global.index-url https://mirror-pypi.runflare.com/simple"
         )
         raise SystemExit(1)
 
@@ -99,8 +102,8 @@ def serve(port: int) -> None:
     def announce() -> None:
         # Runs on a timer so it lands after Flask's own startup banner,
         # leaving the address as the last thing on screen.
-        print(f"\n✔ داشبورد آماده است: {url}")
-        print("  برای بستن، در همین پنجره Ctrl+C بزنید.\n")
+        print(f"\n==> Dashboard ready: {url}")
+        print("    Press Ctrl+C in this window to stop.\n")
         webbrowser.open(url)
 
     threading.Timer(1.0, announce).start()
@@ -122,7 +125,7 @@ def main() -> None:
     try:
         serve(free_port())
     except KeyboardInterrupt:
-        print("\nداشبورد بسته شد.")
+        print("\nDashboard stopped.")
 
 
 if __name__ == "__main__":

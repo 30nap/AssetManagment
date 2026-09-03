@@ -3,8 +3,8 @@
 Serves the Persian asset dashboard and proxies live price lookups to the
 market providers (TGJU for gold/currency/crypto, TSETMC for stocks and ETFs).
 
-Double-click ``run.bat`` (Windows) or ``run.command`` (macOS/Linux) to start
-it. To run it by hand, with the reloader on::
+Run ``run.ps1`` (Windows) or ``run.sh`` (macOS/Linux) to start it. To run it
+by hand, with the reloader on::
 
     pip install -r requirements.txt
     python flask_app.py
