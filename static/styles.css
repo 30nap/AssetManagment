@@ -92,8 +92,8 @@ h2 {
 }
 
 .hero-copy,
+.allocation-empty,
 .section-heading p,
-.controls-panel p,
 .history-panel > .section-heading p {
   margin-bottom: 0;
   color: var(--muted);
@@ -172,7 +172,7 @@ button.is-loading::before {
 }
 
 .summary-card,
-.controls-panel,
+.settings-panel,
 .history-panel,
 .assets-panel,
 .insights-panel,
@@ -202,13 +202,46 @@ button.is-loading::before {
   text-align: right;
 }
 
+.summary-sub {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 10px;
+  color: var(--muted);
+  direction: ltr;
+  font-size: 0.95rem;
+  font-variant-numeric: tabular-nums;
+  justify-content: flex-end;
+}
+
+.empty-state {
+  padding: 34px 18px;
+  border: 1px dashed var(--line);
+  border-radius: 20px;
+  text-align: center;
+}
+
+.empty-state[hidden] {
+  display: none;
+}
+
+.empty-state p {
+  margin: 0;
+}
+
+.empty-hint {
+  max-width: 46ch;
+  margin: 10px auto 0 !important;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 2;
+}
+
 .total-card {
   background: linear-gradient(135deg, rgba(241, 184, 75, 0.22), rgba(255, 255, 255, 0.08));
 }
 
 /* History / total-value chart */
 .history-panel {
-  margin-bottom: 18px;
   padding: 22px;
 }
 
@@ -314,13 +347,71 @@ button.is-loading::before {
   direction: ltr;
 }
 
-.controls-panel {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 18px;
+/* Collapsible settings: rates + cushion, out of the way until needed */
+.settings-panel {
   margin-bottom: 18px;
-  padding: 22px;
+  padding: 0;
+}
+
+.settings-panel > summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 22px;
+  border-radius: 26px;
+  cursor: pointer;
+  font-weight: 600;
+  list-style: none;
+}
+
+.settings-panel > summary::-webkit-details-marker {
+  display: none;
+}
+
+/* A down-caret rotated into place: unlike side-pointing triangles it is not
+   bidi-mirrored, so it points the right way in this RTL layout. */
+.settings-panel > summary::before {
+  color: var(--muted);
+  content: "▾";
+  font-size: 0.8rem;
+  transform: rotate(90deg);
+  transition: transform 0.15s ease;
+}
+
+.settings-panel[open] > summary::before {
+  transform: rotate(0deg);
+}
+
+.settings-panel > summary:hover {
+  color: var(--gold);
+}
+
+.settings-panel > summary:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: -4px;
+}
+
+.settings-hint {
+  margin-inline-start: auto;
+  color: var(--muted);
+  font-size: 0.84rem;
+  font-weight: 400;
+  text-align: left;
+}
+
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px;
+  padding: 0 22px;
+}
+
+.settings-note {
+  margin: 14px 0 0;
+  padding: 0 22px 20px;
+  color: var(--muted);
+  font-size: 0.86rem;
+  line-height: 1.9;
 }
 
 .custom-grid {
@@ -348,13 +439,6 @@ button.is-loading::before {
 
 .custom-dialog input::placeholder {
   color: rgba(184, 177, 166, 0.78);
-}
-
-.rates-grid {
-  display: grid;
-  min-width: min(520px, 100%);
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
 }
 
 label {
@@ -395,6 +479,10 @@ select:focus {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 300px;
   gap: 18px;
+}
+
+.assets-panel {
+  margin-bottom: 18px;
 }
 
 .assets-panel,
@@ -869,8 +957,7 @@ td:first-child {
 }
 
 @media (max-width: 960px) {
-  .hero,
-  .controls-panel {
+  .hero {
     align-items: stretch;
     flex-direction: column;
   }
@@ -887,6 +974,10 @@ td:first-child {
   .content-grid,
   .custom-grid {
     grid-template-columns: 1fr;
+  }
+
+  .settings-hint {
+    display: none;
   }
 
   .custom-dialog .custom-grid label:first-child {
@@ -908,7 +999,7 @@ td:first-child {
 
   .hero,
   .summary-card,
-  .controls-panel,
+  .settings-panel,
   .history-panel,
   .assets-panel,
   .insights-panel,
@@ -925,10 +1016,6 @@ td:first-child {
 
   .chart-range {
     text-align: right;
-  }
-
-  .rates-grid {
-    grid-template-columns: 1fr;
   }
 
   .toast-region {

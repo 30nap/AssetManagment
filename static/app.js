@@ -7,9 +7,11 @@ const DEVIATION_WARN = 5;
 // A price older than this is flagged as stale in the asset table.
 const STALE_PRICE_MS = 24 * 60 * 60 * 1000;
 
+// Ordered so consecutive assets never land on neighbouring hues; with only two
+// or three holdings the donut was previously two near-identical golds.
 const colors = [
-  "#f1b84b", "#f6d27e", "#7cb7ff", "#64d6a3", "#a78bfa",
-  "#ff9f68", "#ff7d7d", "#4dd4d4", "#c9f27a", "#d7b3ff", "#e8e1d3",
+  "#f1b84b", "#7cb7ff", "#64d6a3", "#a78bfa", "#ff9f68",
+  "#4dd4d4", "#ff7d7d", "#c9f27a", "#f6d27e", "#d7b3ff", "#e8e1d3",
 ];
 
 // Live conversion rates are fetched from these refs on every refresh.
@@ -25,23 +27,11 @@ const defaultState = {
   priceStatus: "قیمت‌های اولیه قابل ویرایش هستند.",
   // Emergency cushion: an amount (toman) parked inside one of the assets.
   cushion: { amount: 0, assetId: null },
-  assets: [
-    { id: "gold18", title: "طلا ۱۸ عیار", unit: "گرم", amount: 0, price: 4575000, currency: "IRR", icon: "۱۸", ref: { provider: "tgju", code: "geram18" } },
-    { id: "gold24", title: "طلا ۲۴ عیار", unit: "گرم", amount: 0, price: 6100000, currency: "IRR", icon: "۲۴", ref: { provider: "tgju", code: "geram24" } },
-    { id: "usd", title: "دلار", unit: "دلار", amount: 0, price: 1, currency: "USD", icon: "$" },
-    { id: "usdt", title: "تتر", unit: "USDT", amount: 0, price: 1, currency: "USD", icon: "₮", ref: { provider: "tgju", code: "crypto-tether" } },
-    { id: "eur", title: "یورو", unit: "یورو", amount: 0, price: 1, currency: "EUR", icon: "€" },
-    { id: "btc", title: "بیتکوین", unit: "BTC", amount: 0, price: 69000, currency: "USD", icon: "₿", ref: { provider: "tgju", code: "crypto-bitcoin" } },
-    { id: "eth", title: "اتریوم", unit: "ETH", amount: 0, price: 3700, currency: "USD", icon: "Ξ", ref: { provider: "tgju", code: "crypto-ethereum" } },
-    { id: "fullcoin", title: "سکه تمام", unit: "عدد", amount: 0, price: 41500000, currency: "IRR", icon: "س", ref: { provider: "tgju", code: "sekee" } },
-    { id: "halfcoin", title: "نیم سکه", unit: "عدد", amount: 0, price: 23500000, currency: "IRR", icon: "ن", ref: { provider: "tgju", code: "nim" } },
-    { id: "quartercoin", title: "ربع سکه", unit: "عدد", amount: 0, price: 15000000, currency: "IRR", icon: "ر", ref: { provider: "tgju", code: "rob" } },
-    { id: "irr", title: "تومان", unit: "تومان", amount: 0, price: 1, currency: "IRR", icon: "ت" },
-  ].map((asset) => ({ ...asset, target: 0, priceUpdatedAt: null })),
+  // No seeded assets: the dashboard starts empty and the user adds what they
+  // actually hold, from the market search or by hand.
+  assets: [],
   history: [],
 };
-
-const DEFAULT_REFS = new Map(defaultState.assets.map((a) => [a.id, a.ref]));
 
 let state = loadState();
 let chartCurrency = "IRR";
@@ -50,6 +40,8 @@ let searchToken = 0;
 
 const elements = {
   assetsBody: document.querySelector("#assets-body"),
+  assetsTableWrap: document.querySelector("#assets-table-wrap"),
+  assetsEmpty: document.querySelector("#assets-empty"),
   rowTemplate: document.querySelector("#asset-row-template"),
   usdToIrr: document.querySelector("#usd-to-irr"),
   eurToIrr: document.querySelector("#eur-to-irr"),
@@ -98,7 +90,10 @@ const elements = {
 function normalizeAsset(asset) {
   return {
     ...asset,
+    amount: toNumber(asset.amount),
+    price: toNumber(asset.price),
     target: toNumber(asset.target),
+    icon: asset.icon || asset.title?.slice(0, 2) || "+",
     priceUpdatedAt: asset.priceUpdatedAt || null,
   };
 }
@@ -116,28 +111,10 @@ function loadState() {
 
   try {
     const parsed = JSON.parse(saved);
-    const savedMap = new Map((parsed.assets || []).map((asset) => [asset.id, asset]));
-    const defaultIds = new Set(defaultState.assets.map((asset) => asset.id));
-    const customAssets = (parsed.assets || [])
-      .filter((asset) => !defaultIds.has(asset.id))
-      .map((asset) => normalizeAsset({
-        ...asset,
-        icon: asset.icon || asset.title?.slice(0, 2) || "+",
-        custom: true,
-      }));
-
     return {
       ...defaultState,
       ...parsed,
-      // Always re-attach default refs so backend changes propagate.
-      assets: [
-        ...defaultState.assets.map((asset) => normalizeAsset({
-          ...asset,
-          ...(savedMap.get(asset.id) || {}),
-          ref: DEFAULT_REFS.get(asset.id),
-        })),
-        ...customAssets,
-      ],
+      assets: (parsed.assets || []).map(normalizeAsset),
       cushion: normalizeCushion(parsed.cushion),
       history: Array.isArray(parsed.history) ? parsed.history : [],
     };
@@ -343,12 +320,14 @@ function renderRows() {
     priceCurrency.addEventListener("change", () => updateAsset(asset.id, { currency: priceCurrency.value }));
     targetInput.addEventListener("input", () => updateAsset(asset.id, { target: toNumber(targetInput.value) }));
 
-    const deleteButton = row.querySelector(".delete-asset");
-    deleteButton.hidden = !asset.custom;
-    deleteButton.addEventListener("click", () => deleteAsset(asset.id));
+    row.querySelector(".delete-asset").addEventListener("click", () => deleteAsset(asset.id));
 
     elements.assetsBody.append(row);
   });
+
+  const isEmpty = state.assets.length === 0;
+  elements.assetsTableWrap.hidden = isEmpty;
+  elements.assetsEmpty.hidden = !isEmpty;
 
   renderCushionOptions();
   renderFreshness();
@@ -379,7 +358,7 @@ function updateAsset(id, patch) {
 
 function deleteAsset(id) {
   const asset = state.assets.find((item) => item.id === id);
-  if (!asset?.custom) return;
+  if (!asset) return;
   if (!confirm(`دارایی «${asset.title}» حذف شود؟`)) return;
 
   state.assets = state.assets.filter((item) => item.id !== id);
@@ -409,7 +388,6 @@ function addCustomAsset() {
     id: `custom-${Date.now()}-${Math.random().toString(16).slice(2)}`,
     title, unit, amount, price, currency, target,
     icon: title.slice(0, 2),
-    custom: true,
     priceUpdatedAt: new Date().toISOString(),
   });
 
@@ -502,7 +480,6 @@ async function addMarketAsset(item, button) {
     currency: item.currency || "IRR",
     target: 0,
     icon: (item.symbol || item.name || "+").slice(0, 2),
-    custom: true,
     priceUpdatedAt: null,
     ref: { provider: item.provider, code: item.code },
   };
@@ -622,7 +599,7 @@ function renderAllocation(portfolio) {
 
   if (!active.length || portfolio.investable <= 0) {
     elements.donut.style.background = "conic-gradient(rgba(255, 255, 255, 0.13) 0 100%)";
-    elements.allocationList.innerHTML = '<p class="hero-copy">برای دیدن ترکیب دارایی، مقدارها را وارد کنید.</p>';
+    elements.allocationList.innerHTML = '<p class="allocation-empty">برای دیدن ترکیب دارایی، مقدارها را وارد کنید.</p>';
     return;
   }
 
@@ -647,9 +624,19 @@ function renderAllocation(portfolio) {
 
 /* ---------- History + chart ---------- */
 
+// Local calendar day. toISOString() is UTC, so in Tehran (UTC+3:30) anything
+// logged before 03:30 would carry the previous day's key and overwrite that
+// snapshot instead of starting a new one.
+function todayKey() {
+  const now = new Date();
+  return new Date(now.getTime() - now.getTimezoneOffset() * 60000)
+    .toISOString()
+    .slice(0, 10);
+}
+
 function recordHistory(totalIrr, totalUsd, totalEur) {
   if (totalIrr <= 0) return;
-  const day = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  const day = todayKey(); // YYYY-MM-DD
   const entry = { t: day, irr: totalIrr, usd: totalUsd, eur: totalEur };
   const last = state.history[state.history.length - 1];
 
@@ -701,7 +688,18 @@ function renderChart() {
   const lastP = points[points.length - 1];
   const trendUp = lastP.v >= first.v;
   const stroke = trendUp ? "#64d6a3" : "#ff7d7d";
-  const changePct = first.v ? ((lastP.v - first.v) / first.v) * 100 : 0;
+
+  // This line follows total value, which moves both when prices move and when
+  // assets are added or removed, so it is a change in net worth, not a return.
+  // A near-zero baseline (an early snapshot caught mid data-entry) would turn
+  // the ratio into a meaningless thousands-of-percent figure, so past a 10x
+  // swing we report the absolute change instead.
+  const delta = lastP.v - first.v;
+  const ratio = first.v > 0 ? delta / first.v : null;
+  const changeText =
+    ratio !== null && Math.abs(ratio) <= 10
+      ? `${formatNumber(Math.abs(ratio) * 100, 1)}٪`
+      : formatMoney(Math.abs(delta), chartCurrency);
 
   const lastX = x(points.length - 1);
   const lastY = y(lastP.v);
@@ -726,8 +724,8 @@ function renderChart() {
         <strong>${formatMoney(lastP.v, chartCurrency)}</strong>
       </div>
       <div class="chart-change ${trendUp ? "up" : "down"}">
-        ${trendUp ? "▲" : "▼"} ${formatNumber(Math.abs(changePct), 1)}٪
-        <small>از ${toFaDate(first.t)}</small>
+        ${trendUp ? "▲" : "▼"} ${changeText}
+        <small>تغییر ارزش کل از ${toFaDate(first.t)}</small>
       </div>
       <div class="chart-range">
         <span>کمینه ${formatMoney(min, chartCurrency)}</span>
@@ -836,11 +834,14 @@ function escapeHtml(value) {
 }
 
 function toFaDate(iso) {
-  try {
-    return new Date(iso).toLocaleDateString("fa-IR", { month: "short", day: "numeric" });
-  } catch {
-    return iso;
-  }
+  // Build from the parts: `new Date("2026-09-03")` is parsed as UTC midnight
+  // and can render as the previous day west of Greenwich.
+  const [year, month, day] = String(iso).split("-").map(Number);
+  if (!year || !month || !day) return iso;
+  return new Date(year, month - 1, day).toLocaleDateString("fa-IR", {
+    month: "short",
+    day: "numeric",
+  });
 }
 
 /* ---------- Wire up ---------- */

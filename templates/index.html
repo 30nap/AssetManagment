@@ -13,15 +13,12 @@
         <div>
           <p class="eyebrow">مدیریت دارایی شخصی</p>
           <h1>ارزش لحظه‌ای دارایی‌ها</h1>
-          <p class="hero-copy">
-            مقدار دارایی‌ها را وارد کنید؛ سایت ارزش هر مورد و مجموع کل را به دلار، یورو و تومان محاسبه می‌کند.
-          </p>
         </div>
         <div class="hero-actions">
           <button id="refresh-prices" type="button">
-            <span class="btn-label">بروزرسانی آنلاین قیمت‌ها</span>
+            <span class="btn-label">بروزرسانی قیمت‌ها</span>
           </button>
-          <button id="reset-data" class="secondary" type="button">بازنشانی داده‌ها</button>
+          <button id="reset-data" class="secondary" type="button">بازنشانی</button>
         </div>
       </section>
 
@@ -35,52 +32,32 @@
 
       <section class="summary-grid" aria-label="خلاصه ارزش دارایی‌ها">
         <article class="summary-card total-card">
-          <span>ارزش کل به تومان</span>
+          <span>ارزش کل</span>
           <strong id="total-irr">۰ تومان</strong>
+          <div class="summary-sub">
+            <span id="total-usd">$0</span>
+            <span id="total-eur">€0</span>
+          </div>
           <small id="last-updated">هنوز بروزرسانی نشده</small>
-          <small id="price-status">قیمت‌های اولیه قابل ویرایش هستند.</small>
         </article>
         <article class="summary-card">
-          <span>سرمایه‌گذاری (پایه درصدها)</span>
+          <span>سرمایه‌گذاری</span>
           <strong id="total-investable">۰ تومان</strong>
-          <small>ارزش کل منهای بالشتک اضطراری</small>
+          <small>پایه‌ی محاسبه‌ی درصدها</small>
         </article>
         <article class="summary-card">
           <span>بالشتک اضطراری</span>
           <strong id="total-cushion">۰ تومان</strong>
           <small id="cushion-note">تعریف نشده است.</small>
         </article>
-        <article class="summary-card">
-          <span>ارزش کل به دلار</span>
-          <strong id="total-usd">$0</strong>
-        </article>
-        <article class="summary-card">
-          <span>ارزش کل به یورو</span>
-          <strong id="total-eur">€0</strong>
-        </article>
       </section>
 
-      <section class="history-panel" aria-label="روند ارزش کل دارایی‌ها">
-        <div class="section-heading">
-          <div>
-            <h2>روند ارزش کل دارایی‌ها</h2>
-            <p>هر روز که از داشبورد بازدید کنید، ارزش کل آن روز ثبت می‌شود و نمودار زیر رشد دارایی‌ها را در طول زمان نشان می‌دهد.</p>
-          </div>
-          <div class="chart-toggle" role="group" aria-label="واحد نمودار">
-            <button type="button" class="chart-cur is-active" data-currency="IRR">تومان</button>
-            <button type="button" class="chart-cur" data-currency="USD">دلار</button>
-            <button type="button" class="chart-cur" data-currency="EUR">یورو</button>
-          </div>
-        </div>
-        <div id="chart" class="chart"></div>
-      </section>
-
-      <section class="controls-panel">
-        <div>
-          <h2>نرخ‌های پایه</h2>
-          <p>اگر منبع آنلاین در دسترس نبود، این نرخ‌ها برای تبدیل و محاسبه استفاده می‌شوند.</p>
-        </div>
-        <div class="rates-grid">
+      <details class="settings-panel">
+        <summary>
+          <span>نرخ‌های پایه و بالشتک اضطراری</span>
+          <span class="settings-hint" id="price-status">قیمت‌های اولیه قابل ویرایش هستند.</span>
+        </summary>
+        <div class="settings-grid">
           <label>
             دلار آزاد به تومان
             <input id="usd-to-irr" inputmode="decimal" type="number" min="0" step="100" />
@@ -89,63 +66,76 @@
             یورو آزاد به تومان
             <input id="eur-to-irr" inputmode="decimal" type="number" min="0" step="100" />
           </label>
-        </div>
-      </section>
-
-      <section class="controls-panel">
-        <div>
-          <h2>بالشتک اضطراری</h2>
-          <p>
-            مبلغی که برای روز مبادا کنار گذاشته‌اید. در ارزش کل حساب می‌شود، ولی از پایه‌ی محاسبه‌ی
-            درصدها و از ارزش دارایی میزبان کنار گذاشته می‌شود تا تعادل‌بخشی به هم نریزد.
-          </p>
-        </div>
-        <div class="rates-grid">
           <label>
             مبلغ بالشتک (تومان)
             <input id="cushion-amount" inputmode="decimal" type="number" min="0" step="100000" />
           </label>
           <label>
-            نگهداری در دارایی
+            نگهداری بالشتک در
             <select id="cushion-asset">
               <option value="">— انتخاب نشده —</option>
             </select>
           </label>
         </div>
+        <p class="settings-note">
+          نرخ‌ها وقتی منبع آنلاین در دسترس نباشد برای تبدیل استفاده می‌شوند. بالشتک در «ارزش کل»
+          می‌ماند ولی از پایه‌ی محاسبه‌ی درصدها و از ارزش دارایی میزبانش کنار گذاشته می‌شود.
+        </p>
+      </details>
+
+      <section class="assets-panel">
+        <div class="section-heading">
+          <div>
+            <h2>دارایی‌ها</h2>
+            <p class="target-sum">مجموع درصدهای هدف: <strong id="target-sum">۰٪</strong></p>
+          </div>
+          <div class="heading-actions">
+            <button id="open-market-dialog" type="button">افزودن از بازار</button>
+            <button id="open-custom-dialog" class="secondary" type="button">افزودن دستی</button>
+          </div>
+        </div>
+        <div class="table-wrap" id="assets-table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>دارایی</th>
+                <th>مقدار</th>
+                <th>قیمت واحد</th>
+                <th>ارزش تومان</th>
+                <th>هدف ٪</th>
+                <th>واقعی ٪</th>
+                <th>انحراف</th>
+                <th>ارزش دلار</th>
+                <th>ارزش یورو</th>
+                <th><span class="sr-only">عملیات</span></th>
+              </tr>
+            </thead>
+            <tbody id="assets-body"></tbody>
+          </table>
+        </div>
+        <div id="assets-empty" class="empty-state">
+          <p>هنوز دارایی‌ای اضافه نکرده‌اید.</p>
+          <p class="empty-hint">
+            با <strong>افزودن از بازار</strong> نمادهای بورس، صندوق، طلا، ارز و رمزارز را با قیمت
+            زنده اضافه کنید، یا با <strong>افزودن دستی</strong> هر دارایی دیگری را وارد کنید.
+          </p>
+        </div>
       </section>
 
       <section class="content-grid">
-        <section class="assets-panel">
+        <section class="history-panel">
           <div class="section-heading">
             <div>
-              <h2>لیست دارایی‌ها</h2>
-              <p>مقدار و قیمت واحد را هر زمان خواستید تغییر دهید؛ داده‌ها روی همین مرورگر ذخیره می‌شوند.</p>
-              <p class="target-sum">مجموع درصدهای هدف: <strong id="target-sum">۰٪</strong></p>
+              <h2>روند ارزش کل</h2>
+              <p>هر روز که داشبورد را باز کنید، ارزش کل آن روز ثبت می‌شود.</p>
             </div>
-            <div class="heading-actions">
-              <button id="open-market-dialog" type="button">افزودن از بازار</button>
-              <button id="open-custom-dialog" class="secondary" type="button">افزودن دستی</button>
+            <div class="chart-toggle" role="group" aria-label="واحد نمودار">
+              <button type="button" class="chart-cur is-active" data-currency="IRR">تومان</button>
+              <button type="button" class="chart-cur" data-currency="USD">دلار</button>
+              <button type="button" class="chart-cur" data-currency="EUR">یورو</button>
             </div>
           </div>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>دارایی</th>
-                  <th>مقدار</th>
-                  <th>قیمت واحد</th>
-                  <th>ارزش تومان</th>
-                  <th>هدف ٪</th>
-                  <th>واقعی ٪</th>
-                  <th>انحراف</th>
-                  <th>ارزش دلار</th>
-                  <th>ارزش یورو</th>
-                  <th><span class="sr-only">عملیات</span></th>
-                </tr>
-              </thead>
-              <tbody id="assets-body"></tbody>
-            </table>
-          </div>
+          <div id="chart" class="chart"></div>
         </section>
 
         <aside class="insights-panel">
@@ -153,7 +143,7 @@
           <div class="donut-wrap">
             <div id="donut" class="donut" aria-hidden="true"></div>
             <div class="donut-center">
-              <span>سرمایه‌گذاری (تومان)</span>
+              <span>سرمایه‌گذاری</span>
               <strong id="donut-total">۰</strong>
             </div>
           </div>
