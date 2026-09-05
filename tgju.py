@@ -100,15 +100,23 @@ def html_to_text(html: str) -> str:
         .replace("&lrm;", " ")
         .replace("&amp;", "&")
     )
+    # ZWNJ is a format character, not whitespace, so "بیت\u200cکوین" would never
+    # match a catalog name written with a plain space.
+    text = text.replace("\u200c", " ")
     return re.sub(r"\s+", " ", text).strip()
 
 
 def parse_localized_number(value: str) -> float:
-    cleaned = re.sub(r"[^\d.]", "", normalize_digits(value).replace(",", ""))
-    try:
-        return float(cleaned)
-    except ValueError:
-        return 0.0
+    """First well-formed number in the token.
+
+    The price patterns capture ``[\d,.]+``, which happily swallows a trailing
+    sentence period ("97,234.56."). Stripping to digits and dots and calling
+    float() on that raised ValueError and reported the price as missing, so
+    match the number instead of trusting the whole token.
+    """
+    cleaned = normalize_digits(str(value)).replace(",", "")
+    match = re.search(r"\d+(?:\.\d+)?", cleaned)
+    return float(match.group()) if match else 0.0
 
 
 def search(query: str, limit: int = 20) -> list[dict]:
@@ -166,10 +174,15 @@ def _fetch_page(code: str, timeout: int = 8) -> str:
         return fallback.text
 
 
+def _name_pattern(name: str) -> str:
+    """Escaped name whose spaces match any run of whitespace."""
+    return re.escape(name.replace("\u200c", " ")).replace(r"\ ", r"\s+")
+
+
 def _parse_irr_price(text: str, name: str) -> int:
     patterns = []
     if name:
-        escaped = re.escape(name).replace(r"\ ", r"\s+")
+        escaped = _name_pattern(name)
         patterns.append(rf"{escaped}\s+\|\s+([\d,.]+)\s+\|")
         # Row form: "<name> 161,014,000 (2.79%)"
         patterns.append(rf"{escaped}\s+([\d,.]+)\s+\(")
@@ -191,16 +204,52 @@ def _parse_irr_price(text: str, name: str) -> int:
 def _parse_usd_price(text: str, name: str) -> float:
     patterns = []
     if name:
-        escaped = re.escape(name).replace(r"\ ", r"\s+")
-        patterns.append(rf"{escaped}\s+\|\s+[\d,.]+\s+\|\s+([\d,.]+)\s+\|")
+        # Pipe-delimited rows only exist in the r.jina.ai Markdown fallback;
+        # tgju.org HTML reduces to plain text, so the patterns below carry it.
+        patterns.append(rf"{_name_pattern(name)}\s+\|\s+[\d,.]+\s+\|\s+([\d,.]+)\s+\|")
     patterns += [
-        r"قیمت دلاری\s+([\d,.]+)",
+        # Both of these name the dollar explicitly, so they win when present.
+        r"قیمت دلاری\s*:?\s*([\d,.]+)",
         r"در حال حاضر قیمت هر[^\d]{0,80}?([\d,.]+)\s*دلار",
+        # Crypto profiles headline their dollar price as "نرخ فعلی". Without
+        # this, bitcoin and friends parsed to 0 and never refreshed. Kept last
+        # so the two dollar-labelled patterns above always take precedence.
+        r"نرخ فعلی\s*:?\s*([\d,.]+)",
     ]
     for pattern in patterns:
         match = re.search(pattern, text)
         if match:
             value = parse_localized_number(match.group(1))
             if value > 0:
-                return round(value * 100) / 100
+                return _round_usd(value)
     return 0.0
+
+
+def _round_usd(value: float) -> float:
+    """Two decimals for dollar-scale prices, more for sub-cent coins.
+
+    Rounding to two decimals turned SHIB (~0.0000128) into 0.0, which
+    ``fetch_quote`` then reported as "price not found".
+    """
+    return round(value, 2) if value >= 1 else float(f"{value:.8g}")
+
+
+if __name__ == "__main__":  # pragma: no cover - manual diagnostic
+    # Run where tgju.org is reachable, to see what each page actually parses to:
+    #     python tgju.py                       # a sample across all categories
+    #     python tgju.py crypto-bitcoin        # one code
+    import sys
+
+    codes = sys.argv[1:] or [
+        "price_dollar_rl", "price_eur", "geram18", "sekee",
+        "crypto-bitcoin", "crypto-ethereum", "crypto-tether",
+    ]
+    for code in codes:
+        entry = CATALOG_BY_CODE.get(code)
+        label = entry["name"] if entry else code
+        try:
+            quote = fetch_quote(code)
+            unit = "تومان" if quote["currency"] == "IRR" else "دلار"
+            print(f"  {code:22} {label:14} -> {quote['value']:,} {unit}")
+        except Exception as error:  # noqa: BLE001 - the failure is the answer
+            print(f"  {code:22} {label:14} -> ناموفق: {type(error).__name__}: {error}")

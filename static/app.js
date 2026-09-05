@@ -794,12 +794,23 @@ async function refreshPrices() {
       return asset;
     });
 
+    // Name what failed: a bare count left the user guessing which price was stale.
+    const stale = (data.failed || [])
+      .filter((id) => id.startsWith("asset:"))
+      .map((id) => state.assets.find((asset) => asset.id === id.slice(6))?.title)
+      .filter(Boolean);
+
     const failed = items.length - successful;
     state.lastUpdated = now;
-    state.priceStatus =
-      failed === 0
-        ? "همه نرخ‌ها با موفقیت بروزرسانی شدند."
-        : `${successful} نرخ بروزرسانی شد و ${failed} نرخ در دسترس نبود.`;
+    if (failed === 0) {
+      state.priceStatus = "همه نرخ‌ها با موفقیت بروزرسانی شدند.";
+    } else if (stale.length) {
+      state.priceStatus = `${successful} نرخ بروزرسانی شد؛ قیمت ${stale
+        .map((title) => `«${title}»`)
+        .join("، ")} در دسترس نبود.`;
+    } else {
+      state.priceStatus = `${successful} نرخ بروزرسانی شد و ${failed} نرخ در دسترس نبود.`;
+    }
 
     renderRows();
     renderTotals();

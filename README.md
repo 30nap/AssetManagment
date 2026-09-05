@@ -1,94 +1,136 @@
-# داشبورد دارایی‌ها
+# Asset Dashboard
 
-یک وب‌اپلیکیشن فارسی (Flask) برای مدیریت دارایی‌ها و محاسبه ارزش آن‌ها به تومان، دلار و یورو، با بروزرسانی آنلاین قیمت‌ها از بازارهای ایران و نمودار روند ارزش کل در طول زمان.
+A Persian (RTL) Flask dashboard for tracking what you own and what it is worth,
+in toman, dollars and euros. Prices come live from Iranian markets, and
+everything you enter stays in your browser.
 
-## امکانات
+## Features
 
-- محاسبه‌ی لحظه‌ای ارزش هر دارایی و مجموع کل به تومان، دلار و یورو.
-- **بروزرسانی آنلاین قیمت‌ها** از:
-  - **TGJU** برای طلا، سکه، ارز و ارز دیجیتال.
-  - **بورس تهران (TSETMC)** برای سهام شرکت‌ها و صندوق‌های قابل معامله (ETF) مثل عیار، آگاس و آرام.
-- داشبورد **خالی** بالا می‌آید؛ هر دارایی را خودتان اضافه می‌کنید و هیچ ردیف پیش‌فرضی وجود ندارد.
-- **افزودن از بازار**: جستجوی زنده در بورس، طلا، ارز و ارز دیجیتال و افزودن هر نماد با قیمت زنده.
-- **افزودن دستی** برای دارایی‌هایی که منبع آنلاین ندارند (سپرده، صندوق و ...).
-- **نمودار روند ارزش کل** که هر روز یک نقطه از ارزش کل ثبت می‌کند (با نمایش به تومان/دلار/یورو).
-  عددِ کنارش «تغییر ارزش کل» است، نه بازدهی: با خرید و فروش هم جابه‌جا می‌شود، نه فقط با حرکت قیمت‌ها.
-  نمای تومانی هم اسمی است؛ برای سنجش قدرت خرید، نمای دلار واقع‌بینانه‌تر است.
-- **درصد هدف و انحراف**: برای هر دارایی یک درصد هدف از سبد تعیین کنید؛ ستون‌های «هدف»، «واقعی» و «انحراف» فاصله تا هدف را با رنگ نشان می‌دهند (زیر ۲٪ سبز، ۲ تا ۵٪ کهربایی، بالای ۵٪ نارنجی) و بالای صفحه هشدار تعادل‌بخشی ظاهر می‌شود.
-- **بالشتک اضطراری**: مبلغی که برای روز مبادا کنار گذاشته‌اید. در «ارزش کل» حساب می‌شود ولی از پایه‌ی محاسبه‌ی درصدها و از ارزش دارایی میزبانش کنار می‌رود، تا آن دارایی به‌اشتباه بالای هدف نشان داده نشود.
-- **تازگی قیمت**: کنار هر دارایی زمان نسبی آخرین بروزرسانی قیمت («۳ ساعت پیش») و برای قیمت‌های کهنه‌تر از ۲۴ ساعت نشانه‌ی هشدار.
-- نمودار ترکیب دارایی (سهم هر دارایی از سرمایه‌گذاری).
-- ذخیره‌ی همه‌ی داده‌ها در `localStorage` مرورگر.
+- **Live prices** from two sources:
+  - **TGJU** for gold, coins, currencies and crypto.
+  - **TSETMC** (Tehran Stock Exchange) for shares *and* ETFs such as عیار,
+    آگاس and آرام.
+- **Starts empty.** There are no seeded rows; you add exactly what you hold,
+  either from the market search or by hand.
+- **Target allocation and drift.** Give each asset a target share of the
+  portfolio. The table shows target, actual and drift, coloured green under
+  2 points, amber from 2 to 5, and orange above 5. When anything drifts past
+  5 points a rebalance banner names it.
+- **Emergency cushion.** An amount you keep for a rainy day, assigned to one
+  asset. It counts towards total value but is removed from the percentage
+  denominator *and* from the asset holding it, so that asset does not read as
+  permanently over target and skew every rebalance.
+- **Price freshness.** Each row shows when its price was last updated
+  ("۳ ساعت پیش"), flagged once it is older than 24 hours. After a refresh, any
+  price that could not be fetched is named rather than counted.
+- **Net worth over time.** One snapshot per day, viewable in toman, dollars or
+  euros, with an allocation donut alongside.
+- Everything persists to `localStorage`. No database, no accounts, no server
+  state.
 
-## ساختار پروژه
+> **Reading the trend chart.** The figure next to it is a *change in total
+> value*, not a rate of return: it moves when you buy or sell, not only when
+> prices move. The toman view is also nominal, so under high inflation it rises
+> even when purchasing power does not. The dollar view is the more honest proxy
+> for purchasing power.
+
+## Project layout
 
 ```text
-flask_app.py              برنامه‌ی Flask و مسیرها (نقطه‌ی ورود)
-providers.py              توزیع جستجو/قیمت بین ارائه‌دهنده‌ها
-tgju.py                   کاتالوگ و دریافت قیمت طلا/ارز/کریپتو از TGJU
-tsetmc.py                 جستجو و قیمت سهام و صندوق‌های ETF از بورس تهران
-run.py                    راه‌انداز: ساخت محیط مجازی، نصب وابستگی‌ها و بالا آوردن برنامه
-run.ps1                   اسکریپت اجرا (ویندوز، PowerShell)
-run.sh                    اسکریپت اجرا (مک/لینوکس)
-requirements.txt          وابستگی‌ها (Flask, requests)
-templates/index.html      رابط کاربری
-static/styles.css         استایل
-static/app.js             منطق سمت کلاینت
+flask_app.py              Flask app and routes (entry point)
+providers.py              Fans search/quote requests out to the providers
+tgju.py                   Catalog and price scraping for gold/currency/crypto
+tsetmc.py                 Search and prices for Tehran Stock Exchange symbols
+run.py                    Launcher: creates the venv, installs deps, serves
+run.ps1                   Launcher script (Windows, PowerShell)
+run.sh                    Launcher script (macOS/Linux)
+requirements.txt          Dependencies (Flask, requests)
+templates/index.html      UI
+static/styles.css         Styles
+static/app.js             Client-side logic
 ```
 
-## اجرا
+## Running it
 
-### با اسکریپت
+### With the launcher
 
-**ویندوز** — روی `run.ps1` کلیک راست کنید و **Run with PowerShell** را بزنید (این مسیر خودش execution policy را دور می‌زند). یا از ترمینال:
+**Windows** — right-click `run.ps1` and choose **Run with PowerShell** (that
+path already bypasses the execution policy). Or from a shell:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File run.ps1
 ```
 
-**مک / لینوکس:**
+**macOS / Linux:**
 
 ```bash
-chmod +x run.sh   # فقط بار اول
+chmod +x run.sh   # first time only
 ./run.sh
 ```
 
-بار اول یک محیط مجازی (`.venv`) می‌سازد و Flask و requests را داخلش نصب می‌کند؛ بعد از آن بلافاصله بالا می‌آید. وقتی آماده شد، مرورگر خودش باز می‌شود. برای بستن، در همان پنجره `Ctrl+C` بزنید.
+The first run creates a `.venv` and installs Flask and requests into it; after
+that it starts immediately. Your browser opens once the server is up. Press
+`Ctrl+C` in the same window to stop it.
 
-اگر پورت ۵۰۰۰ اشغال باشد (روی مک معمولاً AirPlay آن را گرفته) خودش پورت آزاد بعدی را برمی‌دارد و آدرس درست را چاپ می‌کند.
+If port 5000 is taken (AirPlay usually holds it on macOS) the launcher moves to
+the next free port and prints the real address.
 
-> خروجی اسکریپت‌ها انگلیسی و ASCII خالص است تا با هر code page ترمینالی درست نمایش داده شود. فارسی فقط در خود داشبورد است.
+> Launcher output is plain ASCII English so it survives any terminal code page.
+> The Persian lives in the dashboard itself.
 
-### اجرای دستی
+### By hand
 
 ```bash
 pip install -r requirements.txt
-python flask_app.py      # با reloader روشن، مناسب توسعه
+python flask_app.py      # reloader on, for development
 ```
 
-سپس `http://127.0.0.1:5000/` را باز کنید. برای پورت دیگر:
+Then open `http://127.0.0.1:5000/`. To use a different port:
 
 ```bash
 PORT=8000 python flask_app.py
 ```
 
-## مسیرهای API
+## API
 
-- `GET /api/search?q=<query>` — جستجوی نمادها در همه‌ی بازارها. هر نتیجه شامل `provider`، `code`، `symbol`، `name`، `market`، `currency` و `unit` است.
-- `POST /api/quote` — دریافت هم‌زمان قیمت چند نماد.
-  بدنه: `{"items": [{"id": "...", "provider": "tgju|tsetmc", "code": "..."}]}`
-  پاسخ: `{"results": {"<id>": {"value": ..., "currency": "IRR|USD"}}, "failed": [...]}`
+- `GET /api/search?q=<query>` — search symbols across every market. Each result
+  carries `provider`, `code`, `symbol`, `name`, `market`, `currency` and `unit`.
+- `POST /api/quote` — fetch several prices at once.
+  Body: `{"items": [{"id": "...", "provider": "tgju|tsetmc", "code": "..."}]}`
+  Response: `{"results": {"<id>": {"value": ..., "currency": "IRR|USD"}}, "failed": [...]}`
 
-قیمت‌هایی که با واحد ریال خوانده می‌شوند (TGJU و بورس) در سرور به تومان تبدیل می‌شوند. ارزهای دیجیتال با قیمت دلاری برگردانده می‌شوند.
+Prices quoted in rial (TGJU and TSETMC) are converted to toman server-side.
+Crypto is returned as a dollar price.
 
-## افزودن نماد جدید به کاتالوگ TGJU
+## Troubleshooting prices
 
-برای بررسی اینکه یک نماد بورسی (مثلا صندوق‌های عیار/آگاس/آرام) در جستجو پیدا می‌شود یا نه، همان‌جا که به `cdn.tsetmc.com` دسترسی دارید اجرا کنید:
+Both providers ship a diagnostic you can run wherever the sites are reachable.
+They print exactly what each page parsed to, which is the fastest way to tell a
+blocked network apart from a page whose layout changed.
 
 ```bash
-python tsetmc.py عیار آگاس آرام نهال موج
+python tgju.py                              # a sample across all categories
+python tgju.py crypto-bitcoin geram18       # specific codes
+
+python tsetmc.py عیار آگاس آرام نهال موج    # check symbol lookup
 ```
 
-خروجی برای هر نماد، املای‌های امتحان‌شده، نمادهای پیداشده و قیمت زنده‌شان را چاپ می‌کند.
+Both TGJU and TSETMC frequently refuse non-Iranian IPs, so a failure abroad is
+usually the network rather than the code.
 
-برای افزودن طلا/ارز/کریپتوی جدید، یک ردیف به `CATALOG` در [`tgju.py`](tgju.py) اضافه کنید (با `code` معادل slug صفحه‌ی پروفایل TGJU، `name` فارسی، `unit`، `kind` برابر `irr` یا `usd` و `category`). سهام و صندوق‌های بورسی نیازی به افزودن دستی ندارند چون از API زنده‌ی TSETMC جستجو می‌شوند.
+## Adding a symbol
+
+Shares and exchange-traded funds need no setup — they are searched live against
+TSETMC. TSETMC stores names with the Arabic letters ي/ك while a Persian keyboard
+produces ی/ک, so queries are folded to both spellings before searching;
+otherwise a symbol like عیار can silently return nothing.
+
+To add gold, a currency or a coin, append a row to `CATALOG` in
+[`tgju.py`](tgju.py) with the `code` matching the TGJU profile-page slug, the
+Persian `name`, a `unit`, `kind` set to `irr` or `usd`, and a `category`.
+
+## Notes
+
+- Data lives only in the browser that entered it. Clearing site data clears the
+  portfolio; there is no export yet.
+- The dev server is fine for personal local use, which is what this is for.
